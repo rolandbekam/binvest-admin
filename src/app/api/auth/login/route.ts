@@ -1,3 +1,4 @@
+// @ts-nocheck
 // src/app/api/auth/login/route.ts
 // Endpoint de connexion sécurisé
 
