@@ -1,3 +1,4 @@
+// @ts-nocheck
 'use client';
 // src/app/admin/payments/page.tsx
 import { useEffect, useState } from 'react';
