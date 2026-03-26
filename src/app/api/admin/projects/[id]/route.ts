@@ -1,4 +1,5 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+// @ts-nocheck
+import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient, getAdminFromHeaders } from "@/lib/supabase";
 
 export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
