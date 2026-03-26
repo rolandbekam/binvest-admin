@@ -209,7 +209,7 @@ export default function InvestorDetailPage() {
             <div key={s.label} style={{ background:'#F8FAFC', borderRadius:12, padding:'14px 16px', border:'1px solid #E2E8F0' }}>
               <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:4 }}>
                 <span>{s.icon}</span>
-                <span style={{ fontSize:11, color:'#94A3B8', fontWeight:600, textTransform:'uppercase', fontSize:10 }}>{s.label}</span>
+                <span style={{ fontSize:10, color:'#94A3B8', fontWeight:600, textTransform:'uppercase', fontSize:10 }}>{s.label}</span>
               </div>
               <div style={{ fontSize:20, fontWeight:800, color:s.color, fontFamily:'Syne,sans-serif' }}>{s.value}</div>
             </div>
