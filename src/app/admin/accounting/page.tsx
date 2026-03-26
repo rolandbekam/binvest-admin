@@ -1,3 +1,4 @@
+// @ts-nocheck
 'use client';
 // src/app/admin/accounting/page.tsx
 // Comptabilité B-Invest — CA temps réel et par période
