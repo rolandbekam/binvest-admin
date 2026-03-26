@@ -1,11 +1,11 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import toast from 'react-hot-toast';
 import { getLang, T, type Lang } from '@/lib/i18n';
 
-export default function LoginPage() {
+function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [email, setEmail] = useState('');
@@ -54,22 +54,17 @@ export default function LoginPage() {
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       padding: 20, fontFamily: 'Outfit, sans-serif', position: 'relative', overflow: 'hidden',
     }}>
-      {/* Background decoration */}
       <div style={{ position: 'absolute', top: -100, right: -100, width: 400, height: 400, borderRadius: '50%', background: 'radial-gradient(circle, rgba(201,150,58,0.08) 0%, transparent 70%)', pointerEvents: 'none' }} />
       <div style={{ position: 'absolute', bottom: -100, left: -100, width: 400, height: 400, borderRadius: '50%', background: 'radial-gradient(circle, rgba(230,57,70,0.06) 0%, transparent 70%)', pointerEvents: 'none' }} />
-
-      {/* Pattern */}
       <div style={{ position: 'absolute', inset: 0, opacity: 0.03, backgroundImage: "url(\"data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23ffffff'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4z'/%3E%3C/g%3E%3C/svg%3E\")", pointerEvents: 'none' }} />
 
       <div style={{ width: '100%', maxWidth: 420, position: 'relative' }}>
-        {/* Kente stripe top */}
         <div style={{ display: 'flex', height: 5, borderRadius: 999, overflow: 'hidden', marginBottom: 32 }}>
           {['#1B3A6B','#E63946','#C9963A','#1B2A3A','#1B3A6B','#E63946','#C9963A','#1B2A3A','#1B3A6B','#C9963A'].map((c, i) => (
             <div key={i} style={{ flex: 1, background: c }} />
           ))}
         </div>
 
-        {/* Card */}
         <div style={{
           background: 'rgba(255,255,255,0.06)',
           backdropFilter: 'blur(20px)',
@@ -78,7 +73,6 @@ export default function LoginPage() {
           padding: 40,
           boxShadow: '0 32px 80px rgba(0,0,0,0.4)',
         }}>
-          {/* Logo B-Invest */}
           <div style={{ textAlign: 'center', marginBottom: 32 }}>
             <div style={{
               width: 110, height: 110, borderRadius: 22, background: '#fff',
@@ -101,7 +95,6 @@ export default function LoginPage() {
             </div>
           </div>
 
-          {/* Form */}
           <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div>
               <label style={{ display: 'block', color: 'rgba(255,255,255,0.65)', fontSize: 13, fontWeight: 600, marginBottom: 7 }}>
@@ -169,7 +162,6 @@ export default function LoginPage() {
             </button>
           </form>
 
-          {/* Security notice */}
           <div style={{
             marginTop: 20, padding: '10px 14px', borderRadius: 10,
             background: 'rgba(201,150,58,0.08)', border: '1px solid rgba(201,150,58,0.2)',
@@ -179,7 +171,6 @@ export default function LoginPage() {
             </p>
           </div>
 
-          {/* Lang toggle */}
           <div style={{ textAlign: 'center', marginTop: 16 }}>
             <button onClick={() => setLangState(lang === 'fr' ? 'en' : 'fr')}
               style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: 12, fontFamily: 'Outfit,sans-serif' }}>
@@ -195,5 +186,15 @@ export default function LoginPage() {
 
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #0D2347 0%, #1B3A6B 50%, #0D2347 100%)' }} />
+    }>
+      <LoginContent />
+    </Suspense>
   );
 }
