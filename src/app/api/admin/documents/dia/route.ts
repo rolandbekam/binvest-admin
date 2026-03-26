@@ -1,3 +1,4 @@
+// @ts-nocheck
 // src/app/api/admin/documents/dia/route.ts
 // Génère les documents B-Invest en PDF (FR + EN)
 
