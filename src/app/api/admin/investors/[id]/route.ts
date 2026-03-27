@@ -1,31 +1,65 @@
 // @ts-nocheck
-import { NextRequest, NextResponse } from "next/server";
-import { createAdminClient, getAdminFromHeaders } from "@/lib/supabase";
+// src/app/api/admin/investors/route.ts
+import { NextRequest, NextResponse } from 'next/server';
+import { createAdminClient, getAdminFromHeaders } from '@/lib/supabase';
 
-export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+export async function GET(request: NextRequest) {
   const admin = getAdminFromHeaders(request.headers);
-  if (!admin.id) return NextResponse.json({ error: "Non authentifie" }, { status: 401 });
+  if (!admin.id) return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
   try {
-    const { id } = await context.params;
     const supabase = createAdminClient();
-    const { data: investor } = await supabase.from("investors").select("*").eq("id", id).single();
-    if (!investor) return NextResponse.json({ error: "Introuvable" }, { status: 404 });
-    const { data: subscriptions } = await supabase.from("subscriptions")
-      .select("*, project:projects(id,name,type), tranches:payment_tranches(*)")
-      .eq("investor_id", id);
-    return NextResponse.json({ investor, subscriptions: subscriptions ?? [], tranches: [] });
-  } catch { return NextResponse.json({ error: "Erreur serveur" }, { status: 500 }); }
+    const { searchParams } = new URL(request.url);
+    const search = searchParams.get('search');
+    const kyc = searchParams.get('kyc_status');
+
+    let query = supabase
+      .from('investors')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (kyc) query = query.eq('kyc_status', kyc);
+    if (search) query = query.or(`full_name.ilike.%${search}%,email.ilike.%${search}%`);
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return NextResponse.json({ investors: data ?? [] });
+  } catch (err) {
+    console.error('[INVESTORS GET]', err);
+    return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 });
+  }
 }
 
-export async function PUT(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+export async function POST(request: NextRequest) {
   const admin = getAdminFromHeaders(request.headers);
-  if (!admin.id) return NextResponse.json({ error: "Non authentifie" }, { status: 401 });
+  if (!admin.id) return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
   try {
-    const { id } = await context.params;
     const body = await request.json();
+    if (!body.full_name || !body.email) {
+      return NextResponse.json({ error: 'Nom et email obligatoires' }, { status: 400 });
+    }
     const supabase = createAdminClient();
-    const { data, error } = await supabase.from("investors").update(body).eq("id", id).select().single();
+    const { data, error } = await supabase
+      .from('investors')
+      .insert({
+        full_name: body.full_name,
+        email: body.email.toLowerCase().trim(),
+        phone: body.phone ?? null,
+        country: body.country ?? 'CM',
+        nationality: body.nationality ?? null,
+        address: body.address ?? null,
+        kyc_status: body.kyc_status ?? 'pending',
+        pic_member: body.pic_member ?? false,
+        dia_signed: body.dia_signed ?? false,
+        notes: body.notes ?? null,
+      })
+      .select()
+      .single();
+
     if (error) throw error;
-    return NextResponse.json({ investor: data });
-  } catch { return NextResponse.json({ error: "Erreur serveur" }, { status: 500 }); }
+    return NextResponse.json({ investor: data }, { status: 201 });
+  } catch (err: any) {
+    console.error('[INVESTORS POST]', err);
+    if (err.code === '23505') return NextResponse.json({ error: 'Un investisseur avec cet email existe déjà' }, { status: 409 });
+    return NextResponse.json({ error: err.message ?? 'Erreur serveur' }, { status: 500 });
+  }
 }
