@@ -3,6 +3,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient, getAdminFromHeaders, auditLog } from '@/lib/supabase';
 
+// Try to generate a signed URL from Supabase Storage.
+// Returns null gracefully if the file doesn't exist.
+async function signedUrl(supabase: any, bucket: string, path: string): Promise<string | null> {
+  try {
+    const { data, error } = await supabase.storage
+      .from(bucket)
+      .createSignedUrl(path, 3600); // 1h expiry
+    if (error || !data?.signedUrl) return null;
+    return data.signedUrl;
+  } catch { return null; }
+}
+
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const admin = getAdminFromHeaders(request.headers);
@@ -11,7 +23,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   try {
     const supabase = createAdminClient();
 
-    // Investor details
     const { data: investor, error: invErr } = await supabase
       .from('investors')
       .select('*')
@@ -37,7 +48,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       .eq('investor_id', id)
       .order('created_at', { ascending: false });
 
-    // Flatten tranches for payment history view
     const tranches = (subscriptions ?? []).flatMap(sub =>
       (sub.tranches ?? []).map((t: any) => ({
         ...t,
@@ -52,7 +62,40 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       }))
     );
 
-    return NextResponse.json({ investor, subscriptions: subscriptions ?? [], tranches });
+    // ── KYC documents — try multiple field name conventions ─────────
+    // Convention 1: direct public URLs already stored in investor row
+    let kyc_docs = {
+      id_front: investor.id_front_url ?? investor.id_document_front ?? investor.kyc_front_url ?? null,
+      id_back:  investor.id_back_url  ?? investor.id_document_back  ?? investor.kyc_back_url  ?? null,
+      selfie:   investor.selfie_url   ?? investor.kyc_selfie_url    ?? null,
+    };
+
+    // Convention 2: files stored in Supabase Storage bucket "kyc-documents"
+    // Path pattern used by Buam Finance app: kyc/{user_id}/{filename}
+    // We try both investor.id (admin panel UUID) and investor.user_id (auth UUID)
+    const storageIds = [id, investor.user_id].filter(Boolean);
+    for (const sid of storageIds) {
+      if (!kyc_docs.id_front) {
+        kyc_docs.id_front = await signedUrl(supabase, 'kyc-documents', `${sid}/id_front.jpg`)
+          ?? await signedUrl(supabase, 'kyc-documents', `${sid}/id_front.png`)
+          ?? await signedUrl(supabase, 'kyc-documents', `kyc/${sid}/id_front.jpg`)
+          ?? await signedUrl(supabase, 'kyc', `${sid}/id_front.jpg`);
+      }
+      if (!kyc_docs.id_back) {
+        kyc_docs.id_back = await signedUrl(supabase, 'kyc-documents', `${sid}/id_back.jpg`)
+          ?? await signedUrl(supabase, 'kyc-documents', `${sid}/id_back.png`)
+          ?? await signedUrl(supabase, 'kyc-documents', `kyc/${sid}/id_back.jpg`)
+          ?? await signedUrl(supabase, 'kyc', `${sid}/id_back.jpg`);
+      }
+      if (!kyc_docs.selfie) {
+        kyc_docs.selfie = await signedUrl(supabase, 'kyc-documents', `${sid}/selfie.jpg`)
+          ?? await signedUrl(supabase, 'kyc-documents', `${sid}/selfie.png`)
+          ?? await signedUrl(supabase, 'kyc-documents', `kyc/${sid}/selfie.jpg`)
+          ?? await signedUrl(supabase, 'kyc', `${sid}/selfie.jpg`);
+      }
+    }
+
+    return NextResponse.json({ investor, subscriptions: subscriptions ?? [], tranches, kyc_docs });
   } catch (err: any) {
     console.error('[INVESTORS GET ID]', err);
     return NextResponse.json({ error: err.message ?? 'Erreur serveur' }, { status: 500 });
@@ -72,7 +115,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     const allowed = [
       'full_name', 'email', 'phone', 'country', 'nationality', 'address',
-      'id_type', 'id_number', 'kyc_status', 'kyc_notes',
+      'id_type', 'id_number', 'kyc_status', 'kyc_notes', 'kyc_rejection_reason',
       'pic_member', 'pic_fee_paid', 'dia_signed', 'dia_signed_date',
       'risk_profile', 'notes', 'is_active',
     ];
@@ -93,11 +136,19 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     if (error) throw error;
 
+    // Determine audit severity
+    const severity = update.is_active === false ? 'warning'
+      : update.kyc_status === 'approved' || update.kyc_status === 'rejected' ? 'warning'
+      : 'info';
+
     await auditLog({
       adminId: admin.id, adminEmail: admin.email,
-      action: 'investor.update', resourceType: 'investor', resourceId: id,
+      action: update.is_active === false ? 'investor.archive'
+        : update.kyc_status ? `investor.kyc.${update.kyc_status}`
+        : 'investor.update',
+      resourceType: 'investor', resourceId: id,
       oldValues: old ?? undefined, newValues: update,
-      ipAddress: admin.ip, severity: 'info',
+      ipAddress: admin.ip, severity,
     });
 
     return NextResponse.json({ investor: data });

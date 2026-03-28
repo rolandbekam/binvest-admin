@@ -20,17 +20,64 @@ const TR_L: Record<string,{fr:string;en:string}> = {
   late:{fr:'En retard',en:'Late'}, waived:{fr:'Annulé',en:'Waived'},
 };
 
+function DocImage({ url, label, lang }: { url: string | null; label: string; lang: string }) {
+  const [zoom, setZoom] = useState(false);
+  const [err, setErr] = useState(false);
+
+  if (!url || err) {
+    return (
+      <div style={{ borderRadius:12, border:'2px dashed #E2E8F0', padding:32, textAlign:'center', background:'#F8FAFC' }}>
+        <div style={{ fontSize:32, marginBottom:8 }}>🖼️</div>
+        <div style={{ fontSize:12, color:'#94A3B8', fontWeight:600 }}>{label}</div>
+        <div style={{ fontSize:11, color:'#CBD5E1', marginTop:4 }}>
+          {lang === 'fr' ? 'Document non disponible' : 'Document not available'}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div style={{ position:'relative', borderRadius:12, overflow:'hidden', border:'1px solid #E2E8F0', cursor:'zoom-in', boxShadow:'0 2px 8px rgba(0,0,0,0.08)' }}
+        onClick={() => setZoom(true)}>
+        <img src={url} alt={label} onError={() => setErr(true)}
+          style={{ width:'100%', height:180, objectFit:'cover', display:'block' }} />
+        <div style={{ position:'absolute', bottom:0, left:0, right:0, padding:'8px 12px', background:'linear-gradient(transparent,rgba(0,0,0,0.6))', color:'#fff', fontSize:12, fontWeight:700 }}>
+          {label}
+        </div>
+        <div style={{ position:'absolute', top:8, right:8, background:'rgba(0,0,0,0.5)', borderRadius:6, padding:'3px 7px', color:'#fff', fontSize:10, fontWeight:700 }}>
+          🔍 {lang === 'fr' ? 'Agrandir' : 'Zoom'}
+        </div>
+      </div>
+
+      {zoom && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.85)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:9999, padding:24 }}
+          onClick={() => setZoom(false)}>
+          <div style={{ position:'relative', maxWidth:'90vw', maxHeight:'90vh' }}>
+            <img src={url} alt={label} style={{ maxWidth:'100%', maxHeight:'85vh', borderRadius:12, objectFit:'contain', boxShadow:'0 20px 60px rgba(0,0,0,0.5)' }} />
+            <div style={{ position:'absolute', top:-16, right:-16, width:36, height:36, borderRadius:'50%', background:'#fff', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', fontSize:16, fontWeight:900, color:'#374151', boxShadow:'0 4px 12px rgba(0,0,0,0.3)' }}>✕</div>
+            <div style={{ textAlign:'center', color:'rgba(255,255,255,0.7)', fontSize:13, marginTop:12 }}>{label}</div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 export default function InvestorDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const [lang, setL] = useState<Lang>('fr');
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<'profil'|'projets'|'paiements'|'notes'>('profil');
+  const [tab, setTab] = useState<'profil'|'kyc'|'projets'|'paiements'|'notes'>('profil');
   const [editKyc, setEditKyc] = useState('');
+  const [rejectionReason, setRejectionReason] = useState('');
+  const [showRejectBox, setShowRejectBox] = useState(false);
   const [notes, setNotes] = useState('');
   const [savingNote, setSavingNote] = useState(false);
   const [sendingEmail, setSendingEmail] = useState(false);
+  const [archiving, setArchiving] = useState(false);
 
   useEffect(() => {
     setL(getLang());
@@ -55,13 +102,46 @@ export default function InvestorDetailPage() {
 
   const t = T[lang];
 
-  const updateKyc = async (status: string) => {
-    await fetch(`/api/admin/investors/${id}`, {
+  const updateKyc = async (status: string, reason?: string) => {
+    const body: any = { kyc_status: status };
+    if (reason) body.kyc_rejection_reason = reason;
+    const r = await fetch(`/api/admin/investors/${id}`, {
       method:'PUT', headers:{'Content-Type':'application/json'},
-      credentials:'include', body: JSON.stringify({ kyc_status: status }),
+      credentials:'include', body: JSON.stringify(body),
     });
-    toast.success(lang === 'fr' ? 'Statut KYC mis à jour' : 'KYC status updated');
+    const d = await r.json();
+    if (!r.ok) { toast.error(d.error ?? 'Erreur'); return; }
+    toast.success(
+      status === 'approved' ? (lang==='fr' ? '✅ KYC approuvé' : '✅ KYC approved')
+      : status === 'rejected' ? (lang==='fr' ? '❌ KYC rejeté' : '❌ KYC rejected')
+      : (lang==='fr' ? 'Statut KYC mis à jour' : 'KYC status updated')
+    );
+    setShowRejectBox(false);
+    setRejectionReason('');
     load();
+  };
+
+  const archiveInvestor = async () => {
+    const inv = data?.investor;
+    const isActive = inv?.is_active !== false;
+    const confirmMsg = isActive
+      ? (lang==='fr' ? `Archiver ${inv?.full_name} ? L'investisseur ne pourra plus se connecter ni effectuer de souscriptions.` : `Archive ${inv?.full_name}? The investor will no longer be able to log in or make subscriptions.`)
+      : (lang==='fr' ? `Réactiver ${inv?.full_name} ?` : `Reactivate ${inv?.full_name}?`);
+    if (!window.confirm(confirmMsg)) return;
+    setArchiving(true);
+    try {
+      const r = await fetch(`/api/admin/investors/${id}`, {
+        method:'PUT', headers:{'Content-Type':'application/json'},
+        credentials:'include', body: JSON.stringify({ is_active: !isActive }),
+      });
+      const d = await r.json();
+      if (!r.ok) { toast.error(d.error ?? 'Erreur'); }
+      else toast.success(isActive
+        ? (lang==='fr' ? '📦 Investisseur archivé' : '📦 Investor archived')
+        : (lang==='fr' ? '✅ Investisseur réactivé' : '✅ Investor reactivated'));
+      load();
+    } catch { toast.error(lang==='fr' ? 'Erreur réseau' : 'Network error'); }
+    setArchiving(false);
   };
 
   const saveNotes = async () => {
@@ -83,12 +163,9 @@ export default function InvestorDetailPage() {
         body: JSON.stringify({ type, investor_id: id, variables: { lang, name: data?.investor?.full_name } }),
       });
       const d = await r.json();
-      if (d.preview) {
-        toast.success(lang === 'fr' ? `📧 Email simulé (configurez RESEND_API_KEY pour l'envoi réel)` : `📧 Email simulated (configure RESEND_API_KEY for real sending)`);
-      } else {
-        toast.success(lang === 'fr' ? `📧 Email envoyé à ${data?.investor?.email}` : `📧 Email sent to ${data?.investor?.email}`);
-      }
-    } catch { toast.error(lang === 'fr' ? 'Erreur envoi email' : 'Email send error'); }
+      if (d.preview) toast.success(lang==='fr' ? `📧 Email simulé` : `📧 Email simulated`);
+      else toast.success(lang==='fr' ? `📧 Email envoyé à ${data?.investor?.email}` : `📧 Email sent to ${data?.investor?.email}`);
+    } catch { toast.error(lang==='fr' ? 'Erreur envoi email' : 'Email send error'); }
     setSendingEmail(false);
   };
 
@@ -116,7 +193,7 @@ export default function InvestorDetailPage() {
     <div style={{ textAlign:'center', padding:80, fontFamily:'Outfit,sans-serif' }}>
       <div style={{ fontSize:48, marginBottom:16 }}>❌</div>
       <div style={{ fontSize:18, fontWeight:600, color:'#374151' }}>
-        {lang === 'fr' ? 'Investisseur introuvable' : 'Investor not found'}
+        {lang==='fr' ? 'Investisseur introuvable' : 'Investor not found'}
       </div>
       <button onClick={() => router.push('/admin/investors')}
         style={{ marginTop:24, padding:'10px 20px', borderRadius:10, border:'none', background:'#1B3A6B', color:'#fff', cursor:'pointer', fontWeight:700 }}>
@@ -128,17 +205,20 @@ export default function InvestorDetailPage() {
   const inv = data.investor;
   const subs = data?.subscriptions ?? [];
   const tranches = data?.tranches ?? [];
+  const kyc_docs = data?.kyc_docs ?? { id_front: null, id_back: null, selfie: null };
+  const isArchived = inv.is_active === false;
 
-  const totalPaid = tranches.filter((t:any) => t.status === 'received').reduce((s:number,t:any) => s+(t.received_amount_ngn||0), 0);
-  const totalPending = tranches.filter((t:any) => t.status === 'pending').reduce((s:number,t:any) => s+t.amount_ngn, 0);
-  const totalLate = tranches.filter((t:any) => t.status === 'late').reduce((s:number,t:any) => s+t.amount_ngn, 0);
+  const totalPaid = tranches.filter((t:any) => t.status==='received').reduce((s:number,t:any) => s+(t.received_amount_ngn||0), 0);
+  const totalPending = tranches.filter((t:any) => t.status==='pending').reduce((s:number,t:any) => s+t.amount_ngn, 0);
+  const totalLate = tranches.filter((t:any) => t.status==='late').reduce((s:number,t:any) => s+t.amount_ngn, 0);
   const initials = inv.full_name?.split(' ').map((n:string) => n[0]).join('').slice(0,2).toUpperCase() ?? '??';
 
   const TABS = [
-    { key:'profil', label:`👤 ${lang==='fr'?t.investors.personal_info:'Profile'}` },
-    { key:'projets', label:`📋 ${lang==='fr'?'Projets':'Projects'} (${subs.length})` },
+    { key:'profil',    label:`👤 ${lang==='fr'?'Profil':'Profile'}` },
+    { key:'kyc',       label:`🪪 KYC ${inv.kyc_status === 'pending' ? '🔴' : inv.kyc_status === 'in_review' ? '🟡' : inv.kyc_status === 'approved' ? '🟢' : '⚫'}` },
+    { key:'projets',   label:`📋 ${lang==='fr'?'Projets':'Projects'} (${subs.length})` },
     { key:'paiements', label:`💰 ${lang==='fr'?'Paiements':'Payments'} (${tranches.length})` },
-    { key:'notes', label:`📝 ${lang==='fr'?'Notes':'Notes'}` },
+    { key:'notes',     label:`📝 ${lang==='fr'?'Notes':'Notes'}` },
   ];
 
   return (
@@ -149,28 +229,39 @@ export default function InvestorDetailPage() {
         {t.common.back} {lang==='fr'?'aux investisseurs':'to investors'}
       </button>
 
-      {/* Header investisseur */}
-      <div style={{ background:'#fff', borderRadius:20, border:'1px solid #E2E8F0', padding:28, marginBottom:24, boxShadow:'0 2px 12px rgba(27,58,107,0.06)' }}>
+      {/* Archived banner */}
+      {isArchived && (
+        <div style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 18px', borderRadius:12, background:'#F1F5F9', border:'1px solid #CBD5E1', marginBottom:16 }}>
+          <span style={{ fontSize:18 }}>📦</span>
+          <span style={{ fontSize:13, fontWeight:700, color:'#475569' }}>
+            {lang==='fr' ? 'Ce compte investisseur est archivé — accès et souscriptions désactivés' : 'This investor account is archived — access and subscriptions disabled'}
+          </span>
+        </div>
+      )}
+
+      {/* Header */}
+      <div style={{ background:'#fff', borderRadius:20, border:`1px solid ${isArchived ? '#CBD5E1' : '#E2E8F0'}`, padding:28, marginBottom:24, boxShadow:'0 2px 12px rgba(27,58,107,0.06)', opacity: isArchived ? 0.85 : 1 }}>
         {/* Kente */}
         <div style={{ display:'flex', height:4, borderRadius:2, overflow:'hidden', marginBottom:20 }}>
           {['#1B3A6B','#E63946','#C9963A','#0D2347','#1B3A6B','#E63946','#C9963A','#0D2347'].map((c,i) => (
-            <div key={i} style={{ flex:1, background:c }} />
+            <div key={i} style={{ flex:1, background: isArchived ? '#CBD5E1' : c }} />
           ))}
         </div>
 
         <div style={{ display:'flex', gap:20, alignItems:'flex-start' }}>
           {/* Avatar */}
-          <div style={{ width:72, height:72, borderRadius:'50%', background:'linear-gradient(135deg,#1B3A6B,#2E5BA8)', display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontSize:26, fontWeight:900, fontFamily:'Syne,sans-serif', flexShrink:0, border:'3px solid #C9963A', boxShadow:'0 4px 16px rgba(27,58,107,0.25)' }}>
+          <div style={{ width:72, height:72, borderRadius:'50%', background: isArchived ? '#94A3B8' : 'linear-gradient(135deg,#1B3A6B,#2E5BA8)', display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontSize:26, fontWeight:900, fontFamily:'Syne,sans-serif', flexShrink:0, border:`3px solid ${isArchived ? '#CBD5E1' : '#C9963A'}`, boxShadow:'0 4px 16px rgba(27,58,107,0.25)' }}>
             {initials}
           </div>
 
           {/* Infos */}
           <div style={{ flex:1 }}>
             <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap', marginBottom:6 }}>
-              <h2 style={{ fontFamily:'Syne,sans-serif', fontSize:24, fontWeight:800, color:'#0F1E35', margin:0 }}>{inv.full_name}</h2>
+              <h2 style={{ fontFamily:'Syne,sans-serif', fontSize:24, fontWeight:800, color: isArchived ? '#64748B' : '#0F1E35', margin:0 }}>{inv.full_name}</h2>
               <span style={{ fontSize:11, fontWeight:700, padding:'4px 12px', borderRadius:999, background:KYC_B[inv.kyc_status], color:KYC_C[inv.kyc_status] }}>
                 KYC: {KYC_L[inv.kyc_status]?.[lang] ?? inv.kyc_status}
               </span>
+              {isArchived && <span style={{ fontSize:11, fontWeight:700, padding:'4px 12px', borderRadius:999, background:'#F1F5F9', color:'#64748B' }}>📦 {lang==='fr'?'Archivé':'Archived'}</span>}
               {inv.pic_member && <span style={{ fontSize:11, fontWeight:700, padding:'4px 12px', borderRadius:999, background:'#FEF9C3', color:'#854D0E' }}>✦ PIC</span>}
               {inv.dia_signed && <span style={{ fontSize:11, fontWeight:700, padding:'4px 12px', borderRadius:999, background:'#DCFCE7', color:'#166534' }}>📋 DIA</span>}
             </div>
@@ -182,7 +273,7 @@ export default function InvestorDetailPage() {
             </div>
           </div>
 
-          {/* Actions email */}
+          {/* Actions */}
           <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
             <button onClick={() => sendEmail('welcome')} disabled={sendingEmail}
               style={{ padding:'8px 14px', borderRadius:8, border:'1px solid #1B3A6B', background:'rgba(27,58,107,0.06)', color:'#1B3A6B', cursor:'pointer', fontSize:12, fontWeight:600, whiteSpace:'nowrap' }}>
@@ -196,10 +287,15 @@ export default function InvestorDetailPage() {
               style={{ padding:'8px 12px', borderRadius:8, border:'1px solid #E2E8F0', fontSize:12, outline:'none', background:'#fff', cursor:'pointer' }}>
               {Object.entries(KYC_L).map(([v,l]) => <option key={v} value={v}>{l[lang]}</option>)}
             </select>
+            {/* Archive / Reactivate button */}
+            <button onClick={archiveInvestor} disabled={archiving}
+              style={{ padding:'8px 14px', borderRadius:8, border:`1px solid ${isArchived ? '#16a34a' : '#64748B'}`, background: isArchived ? 'rgba(22,163,74,0.06)' : 'rgba(100,116,139,0.06)', color: isArchived ? '#16a34a' : '#64748B', cursor:'pointer', fontSize:12, fontWeight:700, whiteSpace:'nowrap' }}>
+              {archiving ? '…' : isArchived ? (lang==='fr'?'♻️ Réactiver':'♻️ Reactivate') : (lang==='fr'?'📦 Archiver':'📦 Archive')}
+            </button>
           </div>
         </div>
 
-        {/* Stats financières */}
+        {/* Stats */}
         <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:14, marginTop:24 }}>
           {[
             { label:t.investors.total_invested, value:fmt(inv.total_invested_ngn||0), color:'#1B3A6B', icon:'💼' },
@@ -210,7 +306,7 @@ export default function InvestorDetailPage() {
             <div key={s.label} style={{ background:'#F8FAFC', borderRadius:12, padding:'14px 16px', border:'1px solid #E2E8F0' }}>
               <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:4 }}>
                 <span>{s.icon}</span>
-                <span style={{ fontSize:10, color:'#94A3B8', fontWeight:600, textTransform:'uppercase', fontSize:10 }}>{s.label}</span>
+                <span style={{ fontSize:10, color:'#94A3B8', fontWeight:600, textTransform:'uppercase' }}>{s.label}</span>
               </div>
               <div style={{ fontSize:20, fontWeight:800, color:s.color, fontFamily:'Syne,sans-serif' }}>{s.value}</div>
             </div>
@@ -254,16 +350,160 @@ export default function InvestorDetailPage() {
             {[
               ['KYC', KYC_L[inv.kyc_status]?.[lang] ?? inv.kyc_status],
               [lang==='fr'?'Membre PIC':'PIC Member', inv.pic_member?(lang==='fr'?`✅ Oui${inv.pic_fee_paid?` (frais payés)`:` (frais en attente)`}`:`✅ Yes${inv.pic_fee_paid?` (fees paid)`:` (fees pending)`}`):(lang==='fr'?'❌ Non':'❌ No')],
-              [lang==='fr'?'DIA Signé':'DIA Signed', inv.dia_signed?(lang==='fr'?`✅ Oui${inv.dia_signed_date?` le ${new Date(inv.dia_signed_date).toLocaleDateString('fr-FR')}`:''}`:`)✅ Yes`):(lang==='fr'?'❌ Non':'❌ No')],
+              [lang==='fr'?'DIA Signé':'DIA Signed', inv.dia_signed?(lang==='fr'?'✅ Oui':'✅ Yes'):(lang==='fr'?'❌ Non':'❌ No')],
               [lang==='fr'?'Profil risque':'Risk profile', inv.risk_profile==='conservative'?(lang==='fr'?'Conservateur':'Conservative'):inv.risk_profile==='aggressive'?(lang==='fr'?'Agressif':'Aggressive'):(lang==='fr'?'Modéré':'Moderate')],
               [lang==='fr'?'Type pièce ID':'ID type', inv.id_type||'—'],
+              [lang==='fr'?'Numéro ID':'ID number', inv.id_number||'—'],
               [lang==='fr'?'Inscrit le':'Registered', new Date(inv.created_at).toLocaleDateString(lang==='fr'?'fr-FR':'en-GB')],
+              [lang==='fr'?'Statut compte':'Account status', isArchived?(lang==='fr'?'📦 Archivé':'📦 Archived'):(lang==='fr'?'✅ Actif':'✅ Active')],
             ].map(([l,v]) => (
               <div key={String(l)} style={{ display:'flex', justifyContent:'space-between', padding:'10px 0', borderBottom:'1px solid #F1F5F9' }}>
                 <span style={{ color:'#5A6E8A', fontSize:13 }}>{l}</span>
                 <span style={{ color:'#0F1E35', fontWeight:600, fontSize:13 }}>{v}</span>
               </div>
             ))}
+            {inv.kyc_rejection_reason && (
+              <div style={{ marginTop:12, padding:10, background:'#FEF2F2', borderRadius:8, border:'1px solid #FECACA' }}>
+                <div style={{ fontSize:11, fontWeight:700, color:'#991B1B', marginBottom:2 }}>
+                  {lang==='fr'?'Motif de rejet KYC :':'KYC rejection reason:'}
+                </div>
+                <div style={{ fontSize:12, color:'#7F1D1D' }}>{inv.kyc_rejection_reason}</div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── KYC DOCUMENTS ── */}
+      {tab === 'kyc' && (
+        <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
+
+          {/* KYC status banner */}
+          <div style={{ padding:'16px 20px', borderRadius:14, border:`2px solid ${KYC_C[inv.kyc_status]}40`, background:`${KYC_B[inv.kyc_status]}`, display:'flex', alignItems:'center', gap:14 }}>
+            <div style={{ fontSize:32 }}>
+              {inv.kyc_status==='approved'?'✅':inv.kyc_status==='rejected'?'❌':inv.kyc_status==='in_review'?'🔍':'⏳'}
+            </div>
+            <div style={{ flex:1 }}>
+              <div style={{ fontFamily:'Syne,sans-serif', fontWeight:800, fontSize:16, color:KYC_C[inv.kyc_status] }}>
+                KYC : {KYC_L[inv.kyc_status]?.[lang]}
+              </div>
+              <div style={{ fontSize:13, color:'#5A6E8A', marginTop:2 }}>
+                {inv.kyc_status==='pending'
+                  ? (lang==='fr'?'Documents soumis — en attente de vérification manuelle':'Documents submitted — awaiting manual review')
+                  : inv.kyc_status==='in_review'
+                  ? (lang==='fr'?'Vérification en cours par l\'équipe':'Under review by the team')
+                  : inv.kyc_status==='approved'
+                  ? (lang==='fr'?'Identité vérifiée et approuvée':'Identity verified and approved')
+                  : (lang==='fr'?`Rejeté${inv.kyc_rejection_reason ? ` — ${inv.kyc_rejection_reason}` : ''}`:
+                               `Rejected${inv.kyc_rejection_reason ? ` — ${inv.kyc_rejection_reason}` : ''}`)}
+              </div>
+            </div>
+            {/* Quick approve / reject buttons */}
+            {inv.kyc_status !== 'approved' && (
+              <button onClick={() => updateKyc('approved')}
+                style={{ padding:'9px 18px', borderRadius:10, border:'none', background:'#16a34a', color:'#fff', cursor:'pointer', fontWeight:700, fontSize:13, whiteSpace:'nowrap' }}>
+                ✅ {lang==='fr'?'Approuver':'Approve'}
+              </button>
+            )}
+            {inv.kyc_status !== 'rejected' && (
+              <button onClick={() => setShowRejectBox(v => !v)}
+                style={{ padding:'9px 18px', borderRadius:10, border:'2px solid #E63946', background:'#fff', color:'#E63946', cursor:'pointer', fontWeight:700, fontSize:13, whiteSpace:'nowrap' }}>
+                ❌ {lang==='fr'?'Rejeter':'Reject'}
+              </button>
+            )}
+          </div>
+
+          {/* Rejection reason box */}
+          {showRejectBox && (
+            <div style={{ background:'#FEF2F2', borderRadius:12, border:'1px solid #FECACA', padding:18 }}>
+              <div style={{ fontSize:13, fontWeight:700, color:'#991B1B', marginBottom:8 }}>
+                {lang==='fr'?'Motif du rejet (envoyé à l\'investisseur) :':'Rejection reason (sent to investor):'}
+              </div>
+              <textarea value={rejectionReason} onChange={e => setRejectionReason(e.target.value)} rows={3}
+                placeholder={lang==='fr'?'Ex: Photo floue, document expiré, selfie non conforme...':'E.g. Blurry photo, expired document, non-conforming selfie...'}
+                style={{ width:'100%', padding:'10px 14px', borderRadius:8, border:'1px solid #FECACA', fontSize:13, outline:'none', resize:'vertical', fontFamily:'Outfit,sans-serif', background:'#fff' }} />
+              <div style={{ display:'flex', gap:8, marginTop:10 }}>
+                <button onClick={() => setShowRejectBox(false)}
+                  style={{ padding:'8px 16px', borderRadius:8, border:'1px solid #E2E8F0', background:'#fff', cursor:'pointer', fontSize:12, fontWeight:600, color:'#5A6E8A' }}>
+                  {lang==='fr'?'Annuler':'Cancel'}
+                </button>
+                <button onClick={() => updateKyc('rejected', rejectionReason)}
+                  style={{ padding:'8px 20px', borderRadius:8, border:'none', background:'#E63946', color:'#fff', cursor:'pointer', fontSize:13, fontWeight:700 }}>
+                  {lang==='fr'?'Confirmer le rejet':'Confirm rejection'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Document photos */}
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:16 }}>
+            <div>
+              <div style={{ fontSize:12, fontWeight:700, color:'#5A6E8A', textTransform:'uppercase', marginBottom:10, letterSpacing:'0.5px' }}>
+                🪪 {lang==='fr'?`Pièce d'identité — Recto`:'ID Document — Front'}
+              </div>
+              <DocImage url={kyc_docs.id_front} label={lang==='fr'?'Recto pièce ID':'ID Front'} lang={lang} />
+            </div>
+            <div>
+              <div style={{ fontSize:12, fontWeight:700, color:'#5A6E8A', textTransform:'uppercase', marginBottom:10, letterSpacing:'0.5px' }}>
+                🪪 {lang==='fr'?`Pièce d'identité — Verso`:'ID Document — Back'}
+              </div>
+              <DocImage url={kyc_docs.id_back} label={lang==='fr'?'Verso pièce ID':'ID Back'} lang={lang} />
+            </div>
+            <div>
+              <div style={{ fontSize:12, fontWeight:700, color:'#5A6E8A', textTransform:'uppercase', marginBottom:10, letterSpacing:'0.5px' }}>
+                🤳 {lang==='fr'?'Selfie de vérification':'Verification Selfie'}
+              </div>
+              <DocImage url={kyc_docs.selfie} label={lang==='fr'?'Selfie':'Selfie'} lang={lang} />
+            </div>
+          </div>
+
+          {/* Checklist */}
+          <div style={{ background:'#fff', borderRadius:14, border:'1px solid #E2E8F0', padding:20 }}>
+            <div style={{ fontFamily:'Syne,sans-serif', fontWeight:700, fontSize:14, color:'#0F1E35', marginBottom:14 }}>
+              {lang==='fr'?'✅ Checklist de vérification':'✅ Verification Checklist'}
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+              {[
+                lang==='fr'?'Le nom sur la pièce correspond au profil':'Name on ID matches profile',
+                lang==='fr'?'La pièce n\'est pas expirée':'ID is not expired',
+                lang==='fr'?'Les 4 coins de la pièce sont visibles':'All 4 corners of ID are visible',
+                lang==='fr'?'La photo est nette et lisible':'Photo is clear and legible',
+                lang==='fr'?'Le selfie montre clairement le visage':'Selfie clearly shows the face',
+                lang==='fr'?'Le selfie correspond à la photo de la pièce':'Selfie matches ID photo',
+              ].map((item, i) => (
+                <div key={i} style={{ display:'flex', alignItems:'flex-start', gap:8, padding:'8px 12px', borderRadius:8, background:'#F8FAFC', border:'1px solid #E2E8F0' }}>
+                  <span style={{ color:'#94A3B8', fontSize:14, flexShrink:0 }}>☐</span>
+                  <span style={{ fontSize:12, color:'#374151', lineHeight:1.4 }}>{item}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ marginTop:14, padding:'10px 14px', background:'#F0F9FF', borderRadius:10, border:'1px solid #BAE6FD', fontSize:12, color:'#0369A1' }}>
+              ℹ️ {lang==='fr'
+                ? 'Cochez mentalement chaque point avant d\'approuver. Le refus doit être motivé avec un message clair envoyé à l\'investisseur.'
+                : 'Mentally check each point before approving. Rejection must be motivated with a clear message sent to the investor.'}
+            </div>
+          </div>
+
+          {/* Investor info summary for cross-check */}
+          <div style={{ background:'#fff', borderRadius:14, border:'1px solid #E2E8F0', padding:20 }}>
+            <div style={{ fontFamily:'Syne,sans-serif', fontWeight:700, fontSize:14, color:'#0F1E35', marginBottom:12 }}>
+              {lang==='fr'?'📋 Informations déclarées à croiser':'📋 Declared information to cross-check'}
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10 }}>
+              {[
+                [lang==='fr'?'Nom complet':'Full name', inv.full_name],
+                [lang==='fr'?'Nationalité':'Nationality', inv.nationality||'—'],
+                [lang==='fr'?'Type pièce ID':'ID type', inv.id_type||'—'],
+                [lang==='fr'?'Numéro ID':'ID number', inv.id_number||'—'],
+                [lang==='fr'?'Pays':'Country', inv.country||'—'],
+                ['Email', inv.email],
+              ].map(([l,v]) => (
+                <div key={String(l)} style={{ padding:'10px 14px', background:'#F8FAFC', borderRadius:8, border:'1px solid #E2E8F0' }}>
+                  <div style={{ fontSize:10, color:'#94A3B8', fontWeight:700, textTransform:'uppercase', marginBottom:4 }}>{l}</div>
+                  <div style={{ fontSize:13, fontWeight:700, color:'#0F1E35' }}>{v}</div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -280,7 +520,7 @@ export default function InvestorDetailPage() {
             const paid = (sub.tranches ?? []).filter((t:any) => t.status==='received').reduce((s:number,t:any) => s+(t.received_amount_ngn||0), 0);
             const progress = sub.total_amount_ngn > 0 ? Math.round(paid * 100 / sub.total_amount_ngn) : 0;
             return (
-              <div key={sub.id} style={{ background:'#fff', borderRadius:16, border:'1px solid #E2E8F0', padding:24, boxShadow:'0 2px 8px rgba(27,58,107,0.04)' }}>
+              <div key={sub.id} style={{ background:'#fff', borderRadius:16, border:'1px solid #E2E8F0', padding:24 }}>
                 <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:16 }}>
                   <div>
                     <div style={{ fontFamily:'Syne,sans-serif', fontWeight:700, fontSize:18, color:'#0F1E35', marginBottom:4 }}>{sub.project?.name ?? 'Projet'}</div>
@@ -345,10 +585,10 @@ export default function InvestorDetailPage() {
               {tranches.length === 0 ? (
                 <tr><td colSpan={9} style={{ textAlign:'center', padding:40, color:'#94A3B8' }}>{lang==='fr'?'Aucun paiement':'No payments'}</td></tr>
               ) : tranches.map((t: any, i: number) => {
-                const sub = subs.find((s: any) => (s.tranches ?? []).some((tr: any) => tr.id === t.id));
+                const sub = subs.find((s: any) => s.id === t.subscription?.id);
                 return (
                   <tr key={t.id} style={{ borderBottom:i<tranches.length-1?'1px solid #F1F5F9':'none' }}>
-                    <td style={{ padding:'12px 16px', fontSize:13, fontWeight:600, color:'#0F1E35' }}>{sub?.project?.name ?? '—'}</td>
+                    <td style={{ padding:'12px 16px', fontSize:13, fontWeight:600, color:'#0F1E35' }}>{t.subscription?.project?.name ?? '—'}</td>
                     <td style={{ padding:'12px 16px' }}><span style={{ fontSize:12, fontWeight:700, padding:'2px 8px', borderRadius:6, background:'#EFF6FF', color:'#1E40AF' }}>#{t.tranche_number}</span></td>
                     <td style={{ padding:'12px 16px', fontSize:13, fontWeight:600 }}>{fmt(t.amount_ngn)}</td>
                     <td style={{ padding:'12px 16px', fontSize:13, fontWeight:700, color:'#16a34a' }}>{t.received_amount_ngn ? fmt(t.received_amount_ngn) : '—'}</td>
@@ -361,8 +601,8 @@ export default function InvestorDetailPage() {
                       </span>
                     </td>
                     <td style={{ padding:'12px 16px' }}>
-                      {t.status === 'received' && sub && (
-                        <button onClick={() => openDIAPDF(t, sub)}
+                      {t.status === 'received' && t.subscription && (
+                        <button onClick={() => openDIAPDF(t, t.subscription)}
                           style={{ padding:'5px 10px', borderRadius:6, border:'1px solid #1B3A6B', background:'#fff', color:'#1B3A6B', cursor:'pointer', fontSize:11, fontWeight:700 }}>
                           🧾 PDF
                         </button>
