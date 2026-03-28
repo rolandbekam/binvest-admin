@@ -1,9 +1,9 @@
 // @ts-nocheck
-// src/app/api/admin/projects/route.ts
+// src/app/api/admin/projects/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { createAdminClient, getAdminFromHeaders } from '@/lib/supabase';
+import { createAdminClient, getAdminFromHeaders, auditLog } from '@/lib/supabase';
 
-export async function GET(request: NextRequest) {
+export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   const admin = getAdminFromHeaders(request.headers);
   if (!admin.id) return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
   try {
@@ -11,79 +11,89 @@ export async function GET(request: NextRequest) {
     const { data, error } = await supabase
       .from('projects')
       .select('*')
-      .order('created_at', { ascending: false });
+      .eq('id', params.id)
+      .single();
     if (error) throw error;
-    return NextResponse.json({ projects: data ?? [] });
+    if (!data) return NextResponse.json({ error: 'Projet introuvable' }, { status: 404 });
+    return NextResponse.json({ project: data });
   } catch (err: any) {
-    console.error('[PROJECTS GET]', err);
+    console.error('[PROJECTS GET ID]', err);
     return NextResponse.json({ error: err.message ?? 'Erreur serveur' }, { status: 500 });
   }
 }
 
-export async function POST(request: NextRequest) {
+export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
   const admin = getAdminFromHeaders(request.headers);
   if (!admin.id) return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
   try {
     const body = await request.json();
 
-    if (!body.name || !body.min_investment_ngn || !body.target_amount_ngn) {
-      return NextResponse.json({ error: 'Champs obligatoires manquants' }, { status: 400 });
+    // Get old values for audit
+    const supabase = createAdminClient();
+    const { data: old } = await supabase.from('projects').select('*').eq('id', params.id).single();
+
+    const allowed = [
+      'name','type','status','description','location','state_country',
+      'min_investment_ngn','target_amount_ngn','max_amount_ngn',
+      'horizon_years','yield_min_pct','yield_max_pct',
+      'tranches_count','spots_total','fee_facilitation_pct',
+      'fee_management_pct','fee_resale_pct',
+      'is_visible_app','close_date','launch_date','highlights',
+      'surface_ha','price_per_ha_ngn',
+    ];
+    const update: any = {};
+    for (const key of allowed) {
+      if (key in body) update[key] = body[key];
+    }
+    if (Object.keys(update).length === 0) {
+      return NextResponse.json({ error: 'Aucun champ à mettre à jour' }, { status: 400 });
     }
 
-    const slug = body.name.toLowerCase()
-      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
-      + '-' + Date.now().toString(36);
-
-    const insert: any = {
-      slug,
-      name:               String(body.name),
-      type:               body.type ?? 'land_banking',
-      status:             body.status ?? 'draft',
-      description:        body.description ?? null,
-      location:           body.location ?? null,
-      state_country:      body.state_country ?? null,
-      min_investment_ngn: Number(body.min_investment_ngn),
-      target_amount_ngn:  Number(body.target_amount_ngn),
-      raised_amount_ngn:  0,
-      horizon_years:      body.horizon_years  ? Number(body.horizon_years)  : null,
-      yield_min_pct:      body.yield_min_pct  ? Number(body.yield_min_pct)  : null,
-      yield_max_pct:      body.yield_max_pct  ? Number(body.yield_max_pct)  : null,
-      tranches_count:     body.tranches_count ? Number(body.tranches_count) : 1,
-      spots_total:        body.spots_total    ? Number(body.spots_total)    : 10,
-      spots_taken:        0,
-      fee_facilitation_pct: body.fee_facilitation_pct ? Number(body.fee_facilitation_pct) : 10,
-      fee_management_pct:   body.fee_management_pct   ? Number(body.fee_management_pct)   : 3,
-      fee_resale_pct:       body.fee_resale_pct       ? Number(body.fee_resale_pct)       : 15,
-      highlights:     Array.isArray(body.highlights) ? body.highlights : null,
-      is_visible_app: body.is_visible_app ?? false,
-      launch_date:    body.launch_date ?? null,
-      close_date:     body.close_date  ?? null,
-    };
-
-    // Colonnes optionnelles présentes dans l'ancienne table
-    if (body.surface_ha)       insert.surface_ha        = Number(body.surface_ha);
-    if (body.price_per_ha_ngn) insert.price_per_ha_ngn  = Number(body.price_per_ha_ngn);
-    if (body.max_investment_ngn) insert.max_investment_ngn = Number(body.max_investment_ngn);
-    if (body.max_amount_ngn)   insert.max_amount_ngn    = Number(body.max_amount_ngn);
-
-    const supabase = createAdminClient();
     const { data, error } = await supabase
       .from('projects')
-      .insert(insert)
+      .update(update)
+      .eq('id', params.id)
       .select()
       .single();
 
-    if (error) {
-      console.error('[PROJECTS POST DB ERROR]', JSON.stringify(error));
-      return NextResponse.json({ error: error.message, details: error.details, hint: error.hint }, { status: 500 });
-    }
+    if (error) throw error;
 
-    return NextResponse.json({ project: data }, { status: 201 });
+    await auditLog({
+      adminId: admin.id, adminEmail: admin.email,
+      action: 'project.update', resourceType: 'project', resourceId: params.id,
+      oldValues: old ?? undefined, newValues: update,
+      ipAddress: admin.ip, severity: 'info',
+    });
 
+    return NextResponse.json({ project: data });
   } catch (err: any) {
-    console.error('[PROJECTS POST]', err);
-    if (err.code === '23505') return NextResponse.json({ error: 'Un projet avec ce nom existe déjà' }, { status: 409 });
+    console.error('[PROJECTS PUT]', err);
+    return NextResponse.json({ error: err.message ?? 'Erreur serveur' }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+  const admin = getAdminFromHeaders(request.headers);
+  if (!admin.id) return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
+  if (admin.role !== 'super_admin') {
+    return NextResponse.json({ error: 'Super Admin requis' }, { status: 403 });
+  }
+  try {
+    const supabase = createAdminClient();
+    const { data: old } = await supabase.from('projects').select('name,status').eq('id', params.id).single();
+    const { error } = await supabase.from('projects').delete().eq('id', params.id);
+    if (error) throw error;
+
+    await auditLog({
+      adminId: admin.id, adminEmail: admin.email,
+      action: 'project.delete', resourceType: 'project', resourceId: params.id,
+      oldValues: old ?? undefined,
+      ipAddress: admin.ip, severity: 'warning',
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (err: any) {
+    console.error('[PROJECTS DELETE]', err);
     return NextResponse.json({ error: err.message ?? 'Erreur serveur' }, { status: 500 });
   }
 }

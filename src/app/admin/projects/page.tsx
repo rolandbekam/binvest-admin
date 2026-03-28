@@ -66,7 +66,12 @@ export default function ProjectsPage() {
 
   const load=async()=>{
     setLoading(true);
-    try{const r=await fetch('/api/admin/projects',{credentials:'include'});const d=await r.json();setProjects(d.projects??[]);}catch{setProjects([]);}
+    try{
+      const r=await fetch('/api/admin/projects',{credentials:'include'});
+      const d=await r.json();
+      if(!r.ok){toast.error(d.error??`Erreur ${r.status}`);setProjects([]);}
+      else setProjects(d.projects??[]);
+    }catch(e:any){toast.error(e.message??'Erreur réseau');setProjects([]);}
     setLoading(false);
   };
   useEffect(()=>{load();},[]);
