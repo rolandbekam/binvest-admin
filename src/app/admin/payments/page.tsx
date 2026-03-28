@@ -285,7 +285,14 @@ export default function PaymentsPage() {
                         💰 {lang === 'fr' ? 'Enregistrer' : 'Record'}
                       </button>
                     ) : (
-                      <button onClick={() => toast.success('Accusé DIA téléchargé')}
+                      <button onClick={() => {
+                        const subscriptionId = t.subscription_id ?? t.subscription?.id;
+                        if (subscriptionId) {
+                          window.open(`/api/admin/pdf?subscription_id=${subscriptionId}&tranche=${t.tranche_number}&lang=${lang}`, '_blank');
+                        } else {
+                          window.open('/api/admin/pdf', '_blank');
+                        }
+                      }}
                         style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid #E2E8F0', background: '#fff', color: '#1B3A6B', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
                         🧾 DIA
                       </button>

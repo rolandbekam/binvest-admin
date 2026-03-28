@@ -166,11 +166,52 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// GET pour prévisualiser
+// GET pour prévisualiser ou générer depuis subscription_id + tranche
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const lang = (searchParams.get('lang') ?? 'fr') as 'fr' | 'en';
+  const subscriptionId = searchParams.get('subscription_id');
+  const trancheNumber = parseInt(searchParams.get('tranche') ?? '1');
 
+  // Si subscription_id fourni, chercher les données réelles
+  if (subscriptionId) {
+    try {
+      const { createAdminClient } = await import('@/lib/supabase');
+      const supabase = createAdminClient();
+      const { data: tranche } = await supabase
+        .from('payment_tranches')
+        .select('*, subscription:subscriptions(dia_reference, tranches_count, investor:investors(full_name, country), project:projects(name, tranches_count, fee_facilitation_pct))')
+        .eq('subscription_id', subscriptionId)
+        .eq('tranche_number', trancheNumber)
+        .single();
+
+      if (tranche) {
+        const sub = (tranche as any).subscription;
+        const facilPct = sub?.project?.fee_facilitation_pct ?? 10;
+        const amount = tranche.received_amount_ngn ?? tranche.amount_ngn ?? 0;
+        const realData = {
+          reference: sub?.dia_reference ?? `DIA-${subscriptionId.slice(0, 8).toUpperCase()}`,
+          investor_name: sub?.investor?.full_name ?? 'Investisseur',
+          investor_country: sub?.investor?.country ?? '—',
+          project_name: sub?.project?.name ?? 'Projet',
+          amount_ngn: amount,
+          facilitation_fee: Math.round(amount * facilPct / 110),
+          tranche_number: trancheNumber,
+          tranches_total: sub?.tranches_count ?? sub?.project?.tranches_count ?? 1,
+          received_date: tranche.received_date ?? new Date().toISOString().slice(0, 10),
+          payment_method: tranche.payment_method ?? (lang === 'fr' ? 'Virement bancaire' : 'Bank Transfer'),
+          bank_reference: tranche.bank_reference ?? '',
+          lang,
+        };
+        const html = generateDIAHtml(realData);
+        return new NextResponse(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+      }
+    } catch (err) {
+      console.error('[PDF GET]', err);
+    }
+  }
+
+  // Données de démonstration (fallback)
   const demoData = {
     reference: 'DIA-2026-DEMO001',
     investor_name: 'Jean Paul Mbarga',

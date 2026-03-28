@@ -1,41 +1,37 @@
 // @ts-nocheck
-// src/app/api/admin/projects/route.ts — VERSION DEBUG
+// src/app/api/admin/projects/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient, getAdminFromHeaders } from '@/lib/supabase';
 
 export async function GET(request: NextRequest) {
   const admin = getAdminFromHeaders(request.headers);
-  if (!admin.id) return NextResponse.json({ error: 'Non authentifié', adminHeaders: Object.fromEntries(request.headers) }, { status: 401 });
+  if (!admin.id) return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
   try {
     const supabase = createAdminClient();
-    const { data, error } = await supabase.from('projects').select('*').order('created_at', { ascending: false });
-    if (error) return NextResponse.json({ error: error.message, code: error.code, details: error.details, hint: error.hint }, { status: 500 });
+    const { data, error } = await supabase
+      .from('projects')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
     return NextResponse.json({ projects: data ?? [], count: data?.length ?? 0 });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message, stack: err.stack }, { status: 500 });
+    return NextResponse.json({ error: err.message ?? 'Erreur serveur' }, { status: 500 });
   }
 }
 
 export async function POST(request: NextRequest) {
-  // Log toutes les infos pour debug
   const admin = getAdminFromHeaders(request.headers);
-  console.log('[PROJECTS POST] admin:', JSON.stringify(admin));
-
-  if (!admin.id) {
-    console.log('[PROJECTS POST] Non authentifié — headers:', Object.fromEntries(request.headers));
-    return NextResponse.json({ error: 'Non authentifié', adminId: admin.id }, { status: 401 });
-  }
+  if (!admin.id) return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
 
   let body: any;
   try {
     body = await request.json();
-    console.log('[PROJECTS POST] body:', JSON.stringify(body));
   } catch (e: any) {
     return NextResponse.json({ error: 'JSON invalide', details: e.message }, { status: 400 });
   }
 
   if (!body.name || !body.min_investment_ngn || !body.target_amount_ngn) {
-    return NextResponse.json({ error: 'Champs obligatoires manquants', received: Object.keys(body) }, { status: 400 });
+    return NextResponse.json({ error: 'Champs obligatoires manquants' }, { status: 400 });
   }
 
   const slug = body.name.toLowerCase()
@@ -50,7 +46,6 @@ export async function POST(request: NextRequest) {
     status: body.status ?? 'draft',
     description: body.description ?? null,
     location: body.location ?? null,
-    state_country: body.state_country ?? null,
     min_investment_ngn: Number(body.min_investment_ngn),
     target_amount_ngn: Number(body.target_amount_ngn),
     raised_amount_ngn: 0,
@@ -69,33 +64,12 @@ export async function POST(request: NextRequest) {
     max_amount_ngn: body.max_amount_ngn ? Number(body.max_amount_ngn) : null,
   };
 
-  console.log('[PROJECTS POST] insert:', JSON.stringify(insert));
-
   try {
     const supabase = createAdminClient();
-
-    // Test connexion Supabase d'abord
-    const { data: testData, error: testError } = await supabase.from('projects').select('count').limit(1);
-    console.log('[PROJECTS POST] connexion test:', testError ? 'ERREUR: ' + testError.message : 'OK');
-
     const { data, error } = await supabase.from('projects').insert(insert).select().single();
-
-    if (error) {
-      console.error('[PROJECTS POST] DB error:', JSON.stringify(error));
-      return NextResponse.json({
-        error: error.message,
-        code: error.code,
-        details: error.details,
-        hint: error.hint,
-        insert_attempted: insert,
-      }, { status: 500 });
-    }
-
-    console.log('[PROJECTS POST] succès, id:', data.id);
+    if (error) return NextResponse.json({ error: error.message, code: error.code, hint: error.hint }, { status: 500 });
     return NextResponse.json({ project: data }, { status: 201 });
-
   } catch (err: any) {
-    console.error('[PROJECTS POST] exception:', err.message);
-    return NextResponse.json({ error: err.message, type: 'exception' }, { status: 500 });
+    return NextResponse.json({ error: err.message ?? 'Erreur serveur' }, { status: 500 });
   }
 }

@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
 
     let query = supabase
       .from('investors')
-      .select('*')
+      .select('*, subscriptions(id, amount_ngn, status, project:projects(name))')
       .order('created_at', { ascending: false });
 
     if (kyc) query = query.eq('kyc_status', kyc);

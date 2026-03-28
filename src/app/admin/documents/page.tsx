@@ -15,43 +15,21 @@ export default function DocumentsPage() {
   const t = T[lang].docs;
   const [downloading, setDownloading] = useState<string | null>(null);
 
-  // Télécharge dans la langue ACTIVE du panel
+  // Ouvre le document dans un nouvel onglet (imprimable en PDF via Ctrl+P)
   const download = async (type: string) => {
     setDownloading(type);
     try {
-      const res = await fetch(
-        `/api/admin/documents/dia?type=${type}&lang=${lang}`,
-        { credentials: 'include' }
-      );
+      const url = `/api/admin/documents/dia?type=${type}&lang=${lang}`;
+      // Vérifier que la route répond
+      const res = await fetch(url, { credentials: 'include' });
       if (!res.ok) throw new Error();
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-
-      // Nom fichier selon langue et type
-      const names: Record<string, Record<string, string>> = {
-        fr: {
-          dia:      `Contrat-DIA-BInvest.pdf`,
-          ack:      `Accuse-Reception-BInvest.pdf`,
-          pic:      `Constitution-PIC-BInvest.pdf`,
-          joiner:   `Accord-Adhesion-Investisseur.pdf`,
-          referral: `Accord-Parrainage-BInvest.pdf`,
-        },
-        en: {
-          dia:      `DIA-Contract-BInvest.pdf`,
-          ack:      `Payment-Acknowledgement-BInvest.pdf`,
-          pic:      `PIC-Constitution-BInvest.pdf`,
-          joiner:   `Investor-Joiner-Agreement.pdf`,
-          referral: `Referral-Partner-Agreement.pdf`,
-        },
-      };
-      a.download = names[lang]?.[type] ?? `BInvest-${type}-${lang}.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
-      toast.success(lang === 'fr' ? `✅ PDF téléchargé en français` : `✅ PDF downloaded in English`);
+      // Ouvrir dans un nouvel onglet pour impression PDF
+      window.open(url, '_blank');
+      toast.success(lang === 'fr'
+        ? '✅ Document ouvert — utilisez Ctrl+P pour sauvegarder en PDF'
+        : '✅ Document opened — use Ctrl+P to save as PDF');
     } catch {
-      toast.error(lang === 'fr' ? 'Erreur lors du téléchargement' : 'Download error');
+      toast.error(lang === 'fr' ? 'Erreur lors de la génération' : 'Generation error');
     }
     setDownloading(null);
   };
@@ -103,8 +81,8 @@ export default function DocumentsPage() {
 
   const flagEmoji = lang === 'fr' ? '🇫🇷' : '🇬🇧';
   const btnLabel  = (d: DocDef) => lang === 'fr'
-    ? `📥 Télécharger en français`
-    : `📥 Download in English`;
+    ? `🖨️ Ouvrir & imprimer en PDF`
+    : `🖨️ Open & print as PDF`;
   const comingSoon = lang === 'fr' ? 'Bientôt disponible' : 'Coming soon';
 
   return (
