@@ -7,7 +7,7 @@ export const T = {
       dashboard:'Tableau de bord', projects:'Projets', subscriptions:'Souscriptions',
       payments:'Paiements & Tranches', accounting:'Comptabilité', ngx:'Bourse NGX',
       finances:'Finances globales', investors:'Investisseurs', documents:'Documents DIA/PIC',
-      audit:'Audit Trail', settings:'Paramètres',
+      audit:'Audit Trail', settings:'Paramètres', tontines:'Tontines',
       s_main:'Principal', s_finance:'Finances', s_market:'Marchés', s_members:'Membres', s_security:'Sécurité',
     },
     common: {
@@ -165,6 +165,16 @@ export const T = {
       referral:'Accord de parrainage', referral_sub:'Referral Partner · 10% commission',
       download:'📥 Télécharger template', add_new:'➕ Nouveau template',
     },
+    tontines: {
+      title:'🤝 Tontines — Buam Finance', subtitle:'Vue globale de toutes les tontines créées dans l\'app',
+      total_active:'Tontines actives', total_managed:'Montant total géré', total_members:'Membres actifs',
+      name:'Nom tontine', creator:'Créateur', members:'Membres', contribution:'Cotisation',
+      frequency:'Fréquence', next_date:'Prochaine date', status:'Statut', actions:'Actions',
+      active:'Active', inactive:'Inactive', weekly:'Hebdomadaire', monthly:'Mensuelle',
+      no_tontines:'Aucune tontine', loading:'Chargement…', detail:'Détail',
+      current_turn:'Tour actuel', my_turn:'Mon tour', notes:'Notes',
+      members_list:'Liste des membres', turn_info:'Progression',
+    },
     email: {
       payment_received_subject:'Paiement reçu — B-Invest Limited',
       payment_received_body:'Votre paiement de {amount} pour le projet {project} (Tranche {tranche}) a bien été reçu. Accusé de réception en pièce jointe.',
@@ -180,7 +190,7 @@ export const T = {
       dashboard:'Dashboard', projects:'Projects', subscriptions:'Subscriptions',
       payments:'Payments & Instalments', accounting:'Accounting', ngx:'NGX Stock Exchange',
       finances:'Global Finances', investors:'Investors', documents:'DIA/PIC Documents',
-      audit:'Audit Trail', settings:'Settings',
+      audit:'Audit Trail', settings:'Settings', tontines:'Tontines',
       s_main:'Main', s_finance:'Finance', s_market:'Markets', s_members:'Members', s_security:'Security',
     },
     common: {
@@ -336,6 +346,16 @@ export const T = {
       joiner:'Investor Joiner Agreement', joiner_sub:'Investor Joinder Agreement',
       referral:'Referral Agreement', referral_sub:'Referral Partner · 10% commission',
       download:'📥 Download Template', add_new:'➕ New Template',
+    },
+    tontines: {
+      title:'🤝 Tontines — Buam Finance', subtitle:'Global view of all tontines created in the app',
+      total_active:'Active Tontines', total_managed:'Total Managed', total_members:'Active Members',
+      name:'Tontine Name', creator:'Creator', members:'Members', contribution:'Contribution',
+      frequency:'Frequency', next_date:'Next Date', status:'Status', actions:'Actions',
+      active:'Active', inactive:'Inactive', weekly:'Weekly', monthly:'Monthly',
+      no_tontines:'No tontines', loading:'Loading…', detail:'Detail',
+      current_turn:'Current Turn', my_turn:'My Turn', notes:'Notes',
+      members_list:'Members List', turn_info:'Progress',
     },
     email: {
       payment_received_subject:'Payment received — B-Invest Limited',

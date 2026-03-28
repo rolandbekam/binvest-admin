@@ -3,7 +3,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient, getAdminFromHeaders, auditLog } from '@/lib/supabase';
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const admin = getAdminFromHeaders(request.headers);
   if (!admin.id) return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
   try {
@@ -11,7 +12,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     const { data, error } = await supabase
       .from('projects')
       .select('*')
-      .eq('id', params.id)
+      .eq('id', id)
       .single();
     if (error) throw error;
     if (!data) return NextResponse.json({ error: 'Projet introuvable' }, { status: 404 });
@@ -22,15 +23,14 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   }
 }
 
-export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const admin = getAdminFromHeaders(request.headers);
   if (!admin.id) return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
   try {
     const body = await request.json();
-
-    // Get old values for audit
     const supabase = createAdminClient();
-    const { data: old } = await supabase.from('projects').select('*').eq('id', params.id).single();
+    const { data: old } = await supabase.from('projects').select('*').eq('id', id).single();
 
     const allowed = [
       'name','type','status','description','location','state_country',
@@ -52,7 +52,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     const { data, error } = await supabase
       .from('projects')
       .update(update)
-      .eq('id', params.id)
+      .eq('id', id)
       .select()
       .single();
 
@@ -60,7 +60,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 
     await auditLog({
       adminId: admin.id, adminEmail: admin.email,
-      action: 'project.update', resourceType: 'project', resourceId: params.id,
+      action: 'project.update', resourceType: 'project', resourceId: id,
       oldValues: old ?? undefined, newValues: update,
       ipAddress: admin.ip, severity: 'info',
     });
@@ -72,7 +72,8 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const admin = getAdminFromHeaders(request.headers);
   if (!admin.id) return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
   if (admin.role !== 'super_admin') {
@@ -80,13 +81,13 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
   }
   try {
     const supabase = createAdminClient();
-    const { data: old } = await supabase.from('projects').select('name,status').eq('id', params.id).single();
-    const { error } = await supabase.from('projects').delete().eq('id', params.id);
+    const { data: old } = await supabase.from('projects').select('name,status').eq('id', id).single();
+    const { error } = await supabase.from('projects').delete().eq('id', id);
     if (error) throw error;
 
     await auditLog({
       adminId: admin.id, adminEmail: admin.email,
-      action: 'project.delete', resourceType: 'project', resourceId: params.id,
+      action: 'project.delete', resourceType: 'project', resourceId: id,
       oldValues: old ?? undefined,
       ipAddress: admin.ip, severity: 'warning',
     });
