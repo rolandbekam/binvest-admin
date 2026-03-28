@@ -60,16 +60,10 @@ export default function SubscriptionsPage() {
 
   const paidAmount = (sub: any) => sub.tranches?.filter((t:any)=>t.status==='received').reduce((s:number,t:any)=>s+(t.received_amount_ngn||0),0)??0;
 
-  const downloadDIA = async (sub: any) => {
-    try {
-      const res = await fetch(`/api/admin/documents/dia?type=dia&subscription_id=${sub.id}`, { credentials:'include' });
-      if (!res.ok) throw new Error();
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href=url; a.download=`DIA-${sub.dia_reference}.docx`; a.click();
-      URL.revokeObjectURL(url);
-      toast.success('✅ Contrat DIA téléchargé');
-    } catch { toast.error('Erreur téléchargement'); }
+  const downloadDIA = (sub: any) => {
+    const url = `/api/admin/documents/dia?type=dia&subscription_id=${sub.id}&lang=${lang}`;
+    window.open(url, '_blank');
+    toast.success(lang === 'fr' ? '✅ Document ouvert — utilisez Ctrl+P pour sauvegarder en PDF' : '✅ Document opened — use Ctrl+P to save as PDF');
   };
 
   const INP = {border:'none',outline:'none',fontSize:'14px',flex:'1',fontFamily:'Outfit,sans-serif'} as any;
@@ -108,11 +102,18 @@ export default function SubscriptionsPage() {
             <input placeholder={lang==='fr'?'Rechercher...':'Search...'} value={search} onChange={e=>setSearch(e.target.value)} style={INP}/>
           </div>
           <div style={{display:'flex',gap:5,flexWrap:'wrap'}}>
-            {['','pending','active','partial','complete','cancelled'].map(s=>(
-              <button key={s} onClick={()=>setFilterStatus(s)} style={{padding:'7px 12px',borderRadius:999,border:'1px solid',cursor:'pointer',fontSize:11,fontWeight:600,background:filterStatus===s?'#1B3A6B':'#fff',color:filterStatus===s?'#fff':'#5A6E8A',borderColor:filterStatus===s?'#1B3A6B':'#E2E8F0'}}>
-                {s===''?'Tous':SS[s]?.label}
-              </button>
-            ))}
+            {['','pending','active','partial','complete','cancelled'].map(s=>{
+              const statusLabels: Record<string,{fr:string;en:string}> = {
+                pending:{fr:'En attente',en:'Pending'}, active:{fr:'Actif',en:'Active'},
+                partial:{fr:'Partiel',en:'Partial'}, complete:{fr:'Complet',en:'Complete'},
+                cancelled:{fr:'Annulé',en:'Cancelled'},
+              };
+              return (
+                <button key={s} onClick={()=>setFilterStatus(s)} style={{padding:'7px 12px',borderRadius:999,border:'1px solid',cursor:'pointer',fontSize:11,fontWeight:600,background:filterStatus===s?'#1B3A6B':'#fff',color:filterStatus===s?'#fff':'#5A6E8A',borderColor:filterStatus===s?'#1B3A6B':'#E2E8F0'}}>
+                  {s===''?(lang==='fr'?'Tous':'All'):(statusLabels[s]?.[lang]??s)}
+                </button>
+              );
+            })}
           </div>
         </div>
 

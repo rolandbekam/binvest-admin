@@ -2,6 +2,7 @@
 // src/app/admin/audit/page.tsx — Audit Trail complet
 
 import { useEffect, useState } from 'react';
+import { getLang, T, type Lang } from '@/lib/i18n';
 
 interface AuditLog {
   id: string;
@@ -34,6 +35,10 @@ const ACTION_ICONS: Record<string, string> = {
 };
 
 export default function AuditPage() {
+  const [lang, setL] = useState<Lang>('fr');
+  useEffect(() => { setL(getLang()); const h = () => setL(getLang()); window.addEventListener('lang-change', h); return () => window.removeEventListener('lang-change', h); }, []);
+  const t = T[lang].audit;
+
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState({ severity: '', action: '', search: '' });
@@ -63,10 +68,10 @@ export default function AuditPage() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-gray-900" style={{ fontFamily: 'Syne, sans-serif' }}>
-            🔍 Audit Trail
+            {t.title}
           </h2>
           <p className="text-gray-500 text-sm mt-1">
-            Journal immuable de toutes les actions administrateur
+            {t.subtitle}
           </p>
         </div>
         <button
@@ -83,14 +88,14 @@ export default function AuditPage() {
           className="px-4 py-2 text-sm font-semibold rounded-xl border hover:bg-gray-50 transition-all"
           style={{ borderColor: '#E2E8F0', color: '#374151' }}
         >
-          📥 Exporter CSV
+          {t.export}
         </button>
       </div>
 
       {/* Filters */}
       <div className="bg-white rounded-xl border p-4 flex gap-3" style={{ borderColor: '#E2E8F0' }}>
         <input
-          placeholder="🔍 Rechercher..."
+          placeholder={`🔍 ${lang==='fr'?'Rechercher...':'Search...'}`}
           value={filter.search}
           onChange={e => setFilter(f => ({ ...f, search: e.target.value }))}
           className="flex-1 border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2"
@@ -102,10 +107,10 @@ export default function AuditPage() {
           className="border rounded-lg px-3 py-2 text-sm outline-none"
           style={{ borderColor: '#E2E8F0' }}
         >
-          <option value="">Toutes sévérités</option>
-          <option value="info">Info</option>
-          <option value="warning">Avertissement</option>
-          <option value="critical">Critique</option>
+          <option value="">{t.all_severity}</option>
+          <option value="info">{t.info}</option>
+          <option value="warning">{t.warning}</option>
+          <option value="critical">{lang==='fr'?'Critique':'Critical'}</option>
         </select>
         <select
           value={filter.action}
@@ -113,11 +118,11 @@ export default function AuditPage() {
           className="border rounded-lg px-3 py-2 text-sm outline-none"
           style={{ borderColor: '#E2E8F0' }}
         >
-          <option value="">Toutes actions</option>
-          <option value="auth">Authentification</option>
-          <option value="project">Projets</option>
-          <option value="payment">Paiements</option>
-          <option value="subscription">Souscriptions</option>
+          <option value="">{t.all_actions}</option>
+          <option value="auth">{t.auth}</option>
+          <option value="project">{t.project_action}</option>
+          <option value="payment">{t.payment_action}</option>
+          <option value="subscription">{t.sub_action}</option>
         </select>
       </div>
 
@@ -125,8 +130,8 @@ export default function AuditPage() {
       <div className="grid grid-cols-3 gap-4">
         {[
           { label: 'Total logs', value: logs.length, color: '#1B3A6B' },
-          { label: '⚠️ Avertissements', value: logs.filter(l => l.severity === 'warning').length, color: '#D97706' },
-          { label: '🚨 Critiques (paiements)', value: logs.filter(l => l.severity === 'critical').length, color: '#E63946' },
+          { label: `⚠️ ${t.warning}`, value: logs.filter(l => l.severity === 'warning').length, color: '#D97706' },
+          { label: `🚨 ${lang==='fr'?'Critiques (paiements)':'Critical (payments)'}`, value: logs.filter(l => l.severity === 'critical').length, color: '#E63946' },
         ].map(s => (
           <div key={s.label} className="bg-white rounded-xl border p-4" style={{ borderColor: '#E2E8F0' }}>
             <div className="text-xs text-gray-400 mb-1">{s.label}</div>
@@ -141,7 +146,7 @@ export default function AuditPage() {
           <table className="w-full text-sm">
             <thead>
               <tr style={{ backgroundColor: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
-                {['Horodatage', 'Admin', 'Action', 'Ressource', 'IP', 'Sévérité', 'Détails'].map(h => (
+                {[t.timestamp, t.admin, t.action, t.resource, t.ip, t.severity, t.details].map(h => (
                   <th key={h} className="text-left px-4 py-3 text-xs text-gray-400 uppercase tracking-wide font-semibold">
                     {h}
                   </th>
@@ -150,9 +155,9 @@ export default function AuditPage() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={7} className="text-center py-12 text-gray-400">Chargement...</td></tr>
+                <tr><td colSpan={7} className="text-center py-12 text-gray-400">{T[lang].common.loading}</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={7} className="text-center py-12 text-gray-400">Aucun log trouvé</td></tr>
+                <tr><td colSpan={7} className="text-center py-12 text-gray-400">{t.no_logs}</td></tr>
               ) : (
                 filtered.map(log => {
                   const sev = SEVERITY_STYLE[log.severity];
@@ -178,13 +183,13 @@ export default function AuditPage() {
                       <td className="px-4 py-3">
                         <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold"
                           style={{ backgroundColor: sev.bg, color: sev.text, border: `1px solid ${sev.border}` }}>
-                          {sev.label}
+                          {log.severity === 'info' ? t.info : log.severity === 'warning' ? t.warning : t.critical}
                         </span>
                       </td>
                       <td className="px-4 py-3">
                         {log.new_values && (
                           <details className="text-xs">
-                            <summary className="cursor-pointer text-blue-600 hover:underline">Voir détails</summary>
+                            <summary className="cursor-pointer text-blue-600 hover:underline">{lang==='fr'?'Voir détails':'View details'}</summary>
                             <pre className="mt-2 p-2 bg-gray-50 rounded text-xs overflow-auto max-w-xs max-h-32">
                               {JSON.stringify(log.new_values, null, 2)}
                             </pre>

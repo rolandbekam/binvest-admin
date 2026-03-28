@@ -4,6 +4,7 @@
 // Comptabilité B-Invest — CA temps réel et par période
 
 import { useEffect, useState } from 'react';
+import { getLang, T, type Lang } from '@/lib/i18n';
 
 function fmt(n: number, currency = '₦') {
   if (!n) return `${currency}0`;
@@ -14,9 +15,15 @@ function fmt(n: number, currency = '₦') {
 }
 
 const MONTHS_FR = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
+const MONTHS_EN = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const CURRENT_YEAR = new Date().getFullYear();
 
 export default function AccountingPage() {
+  const [lang, setL] = useState<Lang>('fr');
+  useEffect(() => { setL(getLang()); const h = () => setL(getLang()); window.addEventListener('lang-change', h); return () => window.removeEventListener('lang-change', h); }, []);
+  const t = T[lang].accounting;
+  const MONTHS = lang === 'fr' ? MONTHS_FR : MONTHS_EN;
+
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<'month'|'quarter'|'year'|'custom'>('year');
@@ -41,10 +48,10 @@ export default function AccountingPage() {
   const maxBar = Math.max(...(d.monthly ?? []).map((m: any) => Math.max(m.total_received, m.facilitation_fees)), 1);
 
   const TABS = [
-    { key:'overview', label:'📊 Vue d\'ensemble' },
-    { key:'revenues', label:'💰 Revenus' },
-    { key:'projets', label:'🌍 Par projet' },
-    { key:'transactions', label:'📋 Transactions' },
+    { key:'overview', label: t.overview },
+    { key:'revenues', label: t.revenues },
+    { key:'projets', label: t.by_project },
+    { key:'transactions', label: t.transactions },
   ];
 
   return (
@@ -53,9 +60,9 @@ export default function AccountingPage() {
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:24 }}>
         <div>
           <h2 style={{ fontFamily:'Syne,sans-serif', fontSize:24, fontWeight:800, color:'#0F1E35', margin:0 }}>
-            💼 Comptabilité B-Invest
+            {t.title}
           </h2>
-          <p style={{ color:'#5A6E8A', fontSize:14, marginTop:4 }}>Chiffre d'affaires et revenus en temps réel</p>
+          <p style={{ color:'#5A6E8A', fontSize:14, marginTop:4 }}>{t.subtitle}</p>
         </div>
         <div style={{ display:'flex', gap:10, alignItems:'center' }}>
           <div style={{ display:'flex', gap:4, background:'#F1F5F9', padding:4, borderRadius:10 }}>
@@ -64,7 +71,7 @@ export default function AccountingPage() {
                 style={{ padding:'7px 14px', borderRadius:8, border:'none', cursor:'pointer', fontSize:12, fontWeight:600,
                   background:period===p?'#fff':'transparent', color:period===p?'#0F1E35':'#5A6E8A',
                   boxShadow:period===p?'0 2px 6px rgba(27,58,107,0.08)':'none' }}>
-                {p==='month'?'Ce mois':p==='quarter'?'Trimestre':'Année'}
+                {p==='month'?t.this_month:p==='quarter'?t.quarter:t.year}
               </button>
             ))}
           </div>
@@ -73,7 +80,7 @@ export default function AccountingPage() {
             {[2024,2025,2026,2027].map(y=><option key={y} value={y}>{y}</option>)}
           </select>
           <button onClick={load} style={{ padding:'8px 16px', borderRadius:10, border:'1px solid #E2E8F0', background:'#fff', cursor:'pointer', fontSize:13, fontWeight:600, color:'#1B3A6B' }}>
-            🔄 Actualiser
+            {T[lang].common.refresh}
           </button>
         </div>
       </div>
@@ -81,10 +88,10 @@ export default function AccountingPage() {
       {/* KPIs principaux */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:16, marginBottom:24 }}>
         {[
-          { label:'CA Total (paiements reçus)', value: fmt(d.total_received), sub:`+${d.growth_pct??0}% vs période préc.`, color:'#1B3A6B', icon:'💰', trend:'up' },
-          { label:'Frais facilitation (10%)', value: fmt(d.facilitation_fees), sub:`${d.subs_count??0} souscriptions`, color:'#E63946', icon:'💼', trend:'up' },
-          { label:'Frais gestion (3%/an)', value: fmt(d.management_fees), sub:`${d.active_projects??0} projets actifs`, color:'#C9963A', icon:'🏗️', trend:'up' },
-          { label:'Frais adhésion PIC', value: fmt(d.pic_fees), sub:`${d.pic_members??0} membres × 50K XAF`, color:'#7C3AED', icon:'🤝', trend:'up' },
+          { label: t.total_received, value: fmt(d.total_received), sub:`+${d.growth_pct??0}% vs ${lang==='fr'?'période préc.':'prev. period'}`, color:'#1B3A6B', icon:'💰', trend:'up' },
+          { label: t.facilitation, value: fmt(d.facilitation_fees), sub:`${d.subs_count??0} ${lang==='fr'?'souscriptions':'subscriptions'}`, color:'#E63946', icon:'💼', trend:'up' },
+          { label: t.management, value: fmt(d.management_fees), sub:`${d.active_projects??0} ${lang==='fr'?'projets actifs':'active projects'}`, color:'#C9963A', icon:'🏗️', trend:'up' },
+          { label: t.pic_fees, value: fmt(d.pic_fees), sub:`${d.pic_members??0} ${lang==='fr'?'membres × 50K XAF':'members × 50K XAF'}`, color:'#7C3AED', icon:'🤝', trend:'up' },
         ].map(k => (
           <div key={k.label} style={{ background:'#fff', borderRadius:16, padding:'20px 22px', border:'1px solid #E2E8F0', boxShadow:'0 2px 12px rgba(27,58,107,0.06)', position:'relative', overflow:'hidden' }}>
             <div style={{ position:'absolute', bottom:0, left:0, right:0, height:3, background:`linear-gradient(90deg,${k.color},${k.color}60)` }} />
@@ -100,16 +107,16 @@ export default function AccountingPage() {
       <div style={{ background:`linear-gradient(135deg, #1B3A6B, #0D2347)`, borderRadius:20, padding:28, marginBottom:24, color:'#fff' }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
           <div>
-            <div style={{ fontSize:13, opacity:0.7, marginBottom:4 }}>Revenu total consolidé {period==='year'?`${year}`:period==='month'?'ce mois':'ce trimestre'}</div>
+            <div style={{ fontSize:13, opacity:0.7, marginBottom:4 }}>{t.total_revenue} {period==='year'?`${year}`:period==='month'?(lang==='fr'?'ce mois':'this month'):(lang==='fr'?'ce trimestre':'this quarter')}</div>
             <div style={{ fontSize:42, fontWeight:900, fontFamily:'Syne,sans-serif', letterSpacing:'-1px' }}>
               {fmt((d.total_received||0) + (d.management_fees||0) + (d.pic_fees||0))}
             </div>
             <div style={{ fontSize:13, opacity:0.6, marginTop:4 }}>Paiements reçus + Frais gestion + Adhésions PIC</div>
           </div>
           <div style={{ textAlign:'right' }}>
-            <div style={{ fontSize:13, opacity:0.6, marginBottom:4 }}>Taux de recouvrement</div>
+            <div style={{ fontSize:13, opacity:0.6, marginBottom:4 }}>{t.recovery_rate}</div>
             <div style={{ fontSize:36, fontWeight:800, fontFamily:'Syne,sans-serif', color:'#4ADE80' }}>{d.recovery_rate??0}%</div>
-            <div style={{ fontSize:12, opacity:0.5 }}>{d.paid_tranches??0}/{d.total_tranches??0} tranches payées</div>
+            <div style={{ fontSize:12, opacity:0.5 }}>{d.paid_tranches??0}/{d.total_tranches??0} {t.tranches_paid}</div>
           </div>
         </div>
       </div>
@@ -132,7 +139,7 @@ export default function AccountingPage() {
           {/* Graphique mensuel */}
           <div style={{ background:'#fff', borderRadius:16, border:'1px solid #E2E8F0', padding:24 }}>
             <div style={{ fontFamily:'Syne,sans-serif', fontWeight:700, marginBottom:20, fontSize:16 }}>
-              Flux financiers mensuels {year}
+              {t.monthly_chart} {year}
             </div>
             <div style={{ display:'flex', alignItems:'flex-end', gap:8, height:180 }}>
               {(d.monthly ?? []).map((m: any, i: number) => (
@@ -147,7 +154,7 @@ export default function AccountingPage() {
               ))}
             </div>
             <div style={{ display:'flex', gap:16, justifyContent:'center', marginTop:12 }}>
-              {[['#1B3A6B','Paiements reçus'],['#E63946','Frais facilitation']].map(([c,l])=>(
+              {[['#1B3A6B', lang==='fr'?'Paiements reçus':'Payments received'],['#E63946', lang==='fr'?'Frais facilitation':'Facilitation fees']].map(([c,l])=>(
                 <div key={l} style={{ display:'flex', alignItems:'center', gap:6 }}>
                   <div style={{ width:10,height:10,borderRadius:2,background:c }} />
                   <span style={{ fontSize:12,color:'#5A6E8A' }}>{l}</span>
@@ -159,13 +166,13 @@ export default function AccountingPage() {
           {/* Répartition revenus */}
           <div style={{ background:'#fff', borderRadius:16, border:'1px solid #E2E8F0', padding:24 }}>
             <div style={{ fontFamily:'Syne,sans-serif', fontWeight:700, marginBottom:20, fontSize:16 }}>
-              Répartition des revenus
+              {t.revenue_breakdown}
             </div>
             {[
-              { label:'Frais facilitation (10%)', amount: d.facilitation_fees??0, color:'#E63946', pct: d.facilitation_pct??45 },
-              { label:'Paiements bruts', amount: d.total_received??0, color:'#1B3A6B', pct: d.received_pct??35 },
-              { label:'Frais gestion (3%)', amount: d.management_fees??0, color:'#C9963A', pct: d.management_pct??12 },
-              { label:'Adhésions PIC', amount: d.pic_fees??0, color:'#7C3AED', pct: d.pic_pct??8 },
+              { label: t.facilitation, amount: d.facilitation_fees??0, color:'#E63946', pct: d.facilitation_pct??45 },
+              { label: lang==='fr'?'Paiements bruts':'Gross Payments', amount: d.total_received??0, color:'#1B3A6B', pct: d.received_pct??35 },
+              { label: t.management, amount: d.management_fees??0, color:'#C9963A', pct: d.management_pct??12 },
+              { label: t.pic_fees, amount: d.pic_fees??0, color:'#7C3AED', pct: d.pic_pct??8 },
             ].map(item => (
               <div key={item.label} style={{ marginBottom:16 }}>
                 <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6 }}>
@@ -188,7 +195,7 @@ export default function AccountingPage() {
           <table style={{ width:'100%', borderCollapse:'collapse' }}>
             <thead>
               <tr style={{ background:'#F8FAFC' }}>
-                {['Période','Paiements reçus','Frais facilitation','Frais gestion','Adhésions PIC','Total période','Cumul'].map(h=>(
+                {[t.period, t.total_received, t.facilitation, t.management, t.pic_fees, lang==='fr'?'Total période':'Period Total', t.cumul].map(h=>(
                   <th key={h} style={{ textAlign:'left', padding:'11px 16px', fontSize:11, color:'#94A3B8', textTransform:'uppercase', fontWeight:700, borderBottom:'1px solid #E2E8F0' }}>{h}</th>
                 ))}
               </tr>
@@ -236,7 +243,7 @@ export default function AccountingPage() {
                 <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
                   <div>
                     <div style={{ fontFamily:'Syne,sans-serif', fontWeight:700, fontSize:18, color:'#0F1E35' }}>{p.name}</div>
-                    <div style={{ color:'#5A6E8A', fontSize:13, marginTop:2 }}>{p.investors} investisseur(s) · {p.subscriptions} souscription(s)</div>
+                    <div style={{ color:'#5A6E8A', fontSize:13, marginTop:2 }}>{p.investors} {lang==='fr'?'investisseur(s)':'investor(s)'} · {p.subscriptions} {lang==='fr'?'souscription(s)':'subscription(s)'}</div>
                   </div>
                   <div style={{ textAlign:'right' }}>
                     <div style={{ fontSize:22, fontWeight:800, fontFamily:'Syne,sans-serif', color:'#1B3A6B' }}>{fmt(p.raised)}</div>
@@ -245,10 +252,10 @@ export default function AccountingPage() {
                 </div>
                 <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:14 }}>
                   {[
-                    ['Frais facilitation', fmt(p.facilitation_fees), '#E63946'],
-                    ['Frais gestion estimés', fmt(p.management_fees_annual), '#C9963A'],
-                    ['Commission revente', `${p.resale_pct}%`, '#7C3AED'],
-                    ['Tranches reçues', `${p.paid_tranches}/${p.total_tranches}`, '#16a34a'],
+                    [t.facilitation, fmt(p.facilitation_fees), '#E63946'],
+                    [lang==='fr'?'Frais gestion estimés':'Est. Management Fees', fmt(p.management_fees_annual), '#C9963A'],
+                    [lang==='fr'?'Commission revente':'Resale Commission', `${p.resale_pct}%`, '#7C3AED'],
+                    [lang==='fr'?'Tranches reçues':'Instalments received', `${p.paid_tranches}/${p.total_tranches}`, '#16a34a'],
                   ].map(([l,v,c])=>(
                     <div key={l} style={{ background:'#F8FAFC', borderRadius:10, padding:12, borderLeft:`3px solid ${c}` }}>
                       <div style={{ fontSize:11, color:'#94A3B8', marginBottom:4 }}>{l}</div>
@@ -269,15 +276,15 @@ export default function AccountingPage() {
       {activeTab === 'transactions' && (
         <div style={{ background:'#fff', borderRadius:16, border:'1px solid #E2E8F0', overflow:'hidden' }}>
           <div style={{ padding:'16px 20px', borderBottom:'1px solid #E2E8F0', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-            <span style={{ fontFamily:'Syne,sans-serif', fontWeight:700, fontSize:16 }}>Toutes les transactions</span>
+            <span style={{ fontFamily:'Syne,sans-serif', fontWeight:700, fontSize:16 }}>{lang==='fr'?'Toutes les transactions':'All Transactions'}</span>
             <button style={{ padding:'7px 14px', borderRadius:8, border:'1px solid #E2E8F0', background:'#fff', cursor:'pointer', fontSize:12, fontWeight:600, color:'#1B3A6B' }}>
-              📥 Exporter CSV
+              {t.export_csv}
             </button>
           </div>
           <table style={{ width:'100%', borderCollapse:'collapse' }}>
             <thead>
               <tr style={{ background:'#F8FAFC' }}>
-                {['Date','Investisseur','Projet','Tranche','Montant','Méthode','Référence','Statut'].map(h=>(
+                {[T[lang].common.date, lang==='fr'?'Investisseur':'Investor', lang==='fr'?'Projet':'Project', lang==='fr'?'Tranche':'Instalment', T[lang].common.amount, lang==='fr'?'Méthode':'Method', lang==='fr'?'Référence':'Reference', T[lang].common.status].map(h=>(
                   <th key={h} style={{ textAlign:'left', padding:'10px 16px', fontSize:11, color:'#94A3B8', textTransform:'uppercase', fontWeight:700, borderBottom:'1px solid #E2E8F0' }}>{h}</th>
                 ))}
               </tr>
@@ -293,12 +300,12 @@ export default function AccountingPage() {
                   <td style={{ padding:'12px 16px', fontSize:12, color:'#5A6E8A' }}>{t.method?.replace(/_/g,' ')}</td>
                   <td style={{ padding:'12px 16px', fontSize:11, fontFamily:'monospace', color:'#94A3B8' }}>{t.reference}</td>
                   <td style={{ padding:'12px 16px' }}>
-                    <span style={{ fontSize:11, padding:'2px 8px', borderRadius:999, background:'#DCFCE7', color:'#166534', fontWeight:600 }}>✓ Reçu</span>
+                    <span style={{ fontSize:11, padding:'2px 8px', borderRadius:999, background:'#DCFCE7', color:'#166534', fontWeight:600 }}>✓ {lang==='fr'?'Reçu':'Received'}</span>
                   </td>
                 </tr>
               ))}
               {(d.transactions ?? []).length === 0 && (
-                <tr><td colSpan={8} style={{ textAlign:'center', padding:40, color:'#94A3B8' }}>Aucune transaction sur cette période</td></tr>
+                <tr><td colSpan={8} style={{ textAlign:'center', padding:40, color:'#94A3B8' }}>{lang==='fr'?'Aucune transaction sur cette période':'No transactions for this period'}</td></tr>
               )}
             </tbody>
           </table>

@@ -2,13 +2,16 @@
 import { useEffect, useState } from 'react';
 import { getLang, T, type Lang } from '@/lib/i18n';
 const fmt=(n:number)=>n>=1e6?`₦${(n/1e6).toFixed(1)}M`:n>=1e3?`₦${(n/1e3).toFixed(0)}K`:`₦${n||0}`;
-const MONTHS=['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
-const DATA=[12,8,18,15,22,0,0,0,0,0,0,0].map((v,i)=>({m:MONTHS[i],v:v*1e6}));
-const MAX=Math.max(...DATA.map(d=>d.v),1);
+const MONTHS_FR=['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
+const MONTHS_EN=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const MONTH_DATA=[12,8,18,15,22,0,0,0,0,0,0,0];
 export default function FinancesPage() {
   const [lang,setL]=useState<Lang>('fr');
   useEffect(()=>{ setL(getLang()); const h=()=>setL(getLang()); window.addEventListener('lang-change',h); return()=>window.removeEventListener('lang-change',h); },[]);
   const t=T[lang].finances;
+  const MONTHS=lang==='fr'?MONTHS_FR:MONTHS_EN;
+  const DATA=MONTH_DATA.map((v,i)=>({m:MONTHS[i],v:v*1e6}));
+  const MAX=Math.max(...DATA.map(d=>d.v),1);
   const kpis=[[t.aum,'₦48.5M','💼','#1B3A6B','+12% T1 2026'],[t.rev_f,'₦4.85M','💰','#E63946','10% × capital levé'],[t.rev_m,'₦1.46M/an','📈','#C9963A','3% × valeur proj.'],[t.rev_pic,'₦1.85M','🤝','#7C3AED','37 membres × 50K XAF']];
   const fees=[[lang==='fr'?'Facilitation':'Facilitation','10%',lang==='fr'?'Valeur transaction':'Transaction value',fmt(4850000),'#E63946'],[lang==='fr'?'Gestion annuelle':'Annual management','3%',lang==='fr'?'Valeur propriété/an':'Property value/yr',fmt(1460000),'#C9963A'],[lang==='fr'?'Commission revente':'Resale commission','15%',lang==='fr'?'Prix de vente':'Sale price','Variable','#7C3AED'],[lang==='fr'?'Adhésion PIC':'PIC membership','50K XAF',lang==='fr'?'Par membre/an':'Per member/yr',fmt(1850000),'#16a34a'],[lang==='fr'?'Pénalité sortie':'Early exit penalty','30%',lang==='fr'?'Capital engagé':'Committed capital','Variable','#E63946']];
   return (
@@ -43,7 +46,7 @@ export default function FinancesPage() {
           </table>
         </div>
         <div style={{background:'#fff',borderRadius:16,border:'1px solid #E2E8F0',padding:24}}>
-          <div style={{fontFamily:'Syne,sans-serif',fontWeight:700,marginBottom:20}}>Flux financiers mensuels 2026</div>
+          <div style={{fontFamily:'Syne,sans-serif',fontWeight:700,marginBottom:20}}>{lang==='fr'?'Flux financiers mensuels 2026':'Monthly Financial Flows 2026'}</div>
           <div style={{display:'flex',alignItems:'flex-end',gap:6,height:160}}>
             {DATA.map((d,i)=>(
               <div key={i} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:4,height:'100%',justifyContent:'flex-end'}}>
@@ -54,9 +57,9 @@ export default function FinancesPage() {
             ))}
           </div>
           <div style={{marginTop:24,padding:16,background:'linear-gradient(135deg,#1B3A6B,#0D2347)',borderRadius:12}}>
-            <div style={{color:'rgba(255,255,255,0.7)',fontSize:12,marginBottom:4}}>Revenu consolidé T1 2026</div>
+            <div style={{color:'rgba(255,255,255,0.7)',fontSize:12,marginBottom:4}}>{lang==='fr'?'Revenu consolidé T1 2026':'Consolidated Revenue Q1 2026'}</div>
             <div style={{color:'#fff',fontFamily:'Syne,sans-serif',fontSize:30,fontWeight:900}}>₦75.6M</div>
-            <div style={{color:'rgba(255,255,255,0.5)',fontSize:12,marginTop:4}}>Paiements + Frais + Adhésions PIC</div>
+            <div style={{color:'rgba(255,255,255,0.5)',fontSize:12,marginTop:4}}>{lang==='fr'?'Paiements + Frais + Adhésions PIC':'Payments + Fees + PIC Memberships'}</div>
           </div>
         </div>
       </div>

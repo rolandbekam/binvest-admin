@@ -27,7 +27,7 @@ export default function SettingsPage() {
               <input value={company[k]} onChange={e=>setCompany({...company,[k]:e.target.value})} style={{width:'100%',padding:'9px 12px',borderRadius:8,border:'1px solid #E2E8F0',fontSize:14,outline:'none',fontFamily:'Outfit,sans-serif'}}/>
             </div>
           ))}
-          <button onClick={()=>toast.success(t.saved)} style={{padding:'10px 20px',borderRadius:10,border:'none',background:'#1B3A6B',color:'#fff',cursor:'pointer',fontWeight:700,fontSize:14}}>{t.saved}</button>
+          <button onClick={()=>toast.success(t.saved)} style={{padding:'10px 20px',borderRadius:10,border:'none',background:'#1B3A6B',color:'#fff',cursor:'pointer',fontWeight:700,fontSize:14}}>{T[lang].common.save}</button>
         </div>
 
         {/* Frais */}
@@ -39,7 +39,7 @@ export default function SettingsPage() {
               <input type="number" value={fees[k]} onChange={e=>setFees({...fees,[k]:e.target.value})} style={{width:'100%',padding:'9px 12px',borderRadius:8,border:'1px solid #E2E8F0',fontSize:14,outline:'none',fontFamily:'Outfit,sans-serif'}}/>
             </div>
           ))}
-          <button onClick={()=>toast.success(t.saved)} style={{padding:'10px 20px',borderRadius:10,border:'none',background:'#1B3A6B',color:'#fff',cursor:'pointer',fontWeight:700,fontSize:14}}>{t.saved}</button>
+          <button onClick={()=>toast.success(t.saved)} style={{padding:'10px 20px',borderRadius:10,border:'none',background:'#1B3A6B',color:'#fff',cursor:'pointer',fontWeight:700,fontSize:14}}>{T[lang].common.save}</button>
         </div>
 
         {/* Langue */}

@@ -51,7 +51,7 @@ export default function NGXPage() {
         <div style={{background:'#fff',borderRadius:16,border:'1px solid #E2E8F0',overflow:'hidden'}}>
           <div style={{padding:'16px 20px',borderBottom:'1px solid #E2E8F0',fontFamily:'Syne,sans-serif',fontWeight:700}}>{t.stocks}</div>
           <table style={{width:'100%',borderCollapse:'collapse'}}>
-            <thead><tr style={{background:'#F8FAFC'}}>{[t.symbol,'Société','Secteur','Prix (₦)','Variation','Volume'].map(h=><th key={h} style={{textAlign:'left',padding:'10px 16px',fontSize:11,color:'#94A3B8',textTransform:'uppercase',fontWeight:700,borderBottom:'1px solid #E2E8F0'}}>{h}</th>)}</tr></thead>
+            <thead><tr style={{background:'#F8FAFC'}}>{[t.symbol,t.company,t.sector,t.price,t.change,'Volume'].map(h=><th key={h} style={{textAlign:'left',padding:'10px 16px',fontSize:11,color:'#94A3B8',textTransform:'uppercase',fontWeight:700,borderBottom:'1px solid #E2E8F0'}}>{h}</th>)}</tr></thead>
             <tbody>
               {NGX_STOCKS.map((s,i)=>(
                 <tr key={s.symbol} style={{borderBottom:i<NGX_STOCKS.length-1?'1px solid #F1F5F9':'none'}}>
