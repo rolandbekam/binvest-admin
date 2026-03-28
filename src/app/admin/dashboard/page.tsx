@@ -67,33 +67,18 @@ function Sparkline({ values, color='#1B3A6B', height=40, width=120 }: { values:n
   );
 }
 
-const DEMO_STATS = {
-  total_raised_ngn: 130000000, active_projects: 4, total_investors: 37,
-  pending_payments: 6, late_payments: 1, total_subscriptions: 18, monthly_received: 8200000,
+const EMPTY_STATS = {
+  total_raised_ngn: 0, active_projects: 0, total_investors: 0,
+  pending_payments: 0, late_payments: 0, total_subscriptions: 0, monthly_received: 0,
 };
-const MONTHS_DATA = [
-  {v1:8200000,v2:820000},{v1:9500000,v2:950000},{v1:12000000,v2:1200000},
-  {v1:7800000,v2:780000},{v1:11000000,v2:1100000},{v1:0,v2:0},
-  {v1:0,v2:0},{v1:0,v2:0},{v1:0,v2:0},{v1:0,v2:0},{v1:0,v2:0},{v1:0,v2:0},
-];
-const COUNTRIES = [{value:18,color:'#1B3A6B',label:'CM'},{value:10,color:'#E63946',label:'NG'},{value:5,color:'#C9963A',label:'GH'},{value:4,color:'#16a34a',label:'SN'}];
-const PROJECTS_DATA = [
-  {name:'Land Banking Lagos',raised:64000000,target:80000000,color:'#1B3A6B'},
-  {name:'Palmeraie Ogun',raised:32000000,target:50000000,color:'#16a34a'},
-  {name:'Capital Markets',raised:22000000,target:30000000,color:'#E63946'},
-  {name:'Manioc Oyo',raised:12000000,target:20000000,color:'#65a30d'},
-];
-const RECENT_SUBS = [
-  {investor:'Jean Paul Mbarga',project:'Land Banking Lagos',amount:2000000,status:'complete'},
-  {investor:'Marie Ongono',project:'Palmeraie Ogun',amount:1000000,status:'partial'},
-  {investor:'Adaora Okafor',project:'Land Banking Lagos',amount:5000000,status:'partial'},
-  {investor:'Rose Bella',project:'Capital Markets',amount:550000,status:'complete'},
-];
-const SPARKLINES = {raised:[80,90,110,105,130], investors:[28,30,32,35,37]};
 
 export default function DashboardPage() {
   const [lang, setL] = useState<Lang>('fr');
-  const [stats, setStats] = useState(DEMO_STATS);
+  const [stats, setStats] = useState(EMPTY_STATS);
+  const [chartData, setChartData] = useState<{label:string;v1:number;v2:number}[]>([]);
+  const [countries, setCountries] = useState<{value:number;color:string;label:string}[]>([]);
+  const [projectsData, setProjectsData] = useState<{name:string;raised:number;target:number;color:string}[]>([]);
+  const [recentSubs, setRecentSubs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(new Date());
 
@@ -108,7 +93,14 @@ export default function DashboardPage() {
     try {
       const r = await fetch('/api/admin/stats', { credentials:'include' });
       const d = await r.json();
-      if (d.stats) { setStats(d.stats); setLastUpdate(new Date()); }
+      if (d.stats) {
+        setStats(d.stats);
+        setLastUpdate(new Date());
+        if (d.monthly)      setChartData(d.monthly);
+        if (d.countries)    setCountries(d.countries);
+        if (d.projects)     setProjectsData(d.projects);
+        if (d.recent_subs)  setRecentSubs(d.recent_subs);
+      }
     } catch {}
     setLoading(false);
   }, []);
@@ -122,7 +114,6 @@ export default function DashboardPage() {
 
   const t = T[lang];
   const MONTHS = lang === 'fr' ? MONTHS_FR : MONTHS_EN;
-  const chartData = MONTHS_DATA.map((m, i) => ({ label: MONTHS[i], v1: m.v1, v2: m.v2 }));
 
   const STATUS_STYLE: Record<string,{bg:string;text:string}> = {
     complete:{bg:'#DCFCE7',text:'#166534'}, partial:{bg:'#FEF9C3',text:'#854D0E'},
@@ -162,10 +153,10 @@ export default function DashboardPage() {
       {/* KPI Cards avec sparkline */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:16, marginBottom:24 }}>
         {[
-          { label:t.dashboard.total_raised, value:fmt(stats.total_raised_ngn), color:'#1B3A6B', icon:'💼', sparkline:SPARKLINES.raised, sparkColor:'#1B3A6B', sub:'+12% vs T4 2025' },
-          { label:t.dashboard.active_projects, value:String(stats.active_projects), color:'#E63946', icon:'🌍', sparkline:[3,3,4,4,4], sparkColor:'#E63946', sub:'Land Banking · Agri · PIC' },
-          { label:t.dashboard.active_investors, value:String(stats.total_investors), color:'#C9963A', icon:'👥', sparkline:SPARKLINES.investors, sparkColor:'#C9963A', sub:`${stats.pending_payments} paiements en attente` },
-          { label:t.dashboard.received_month, value:fmt(stats.monthly_received), color:'#16a34a', icon:'✅', sparkline:[4,7,5,9,8], sparkColor:'#16a34a', sub:lang==='fr'?'Ce mois':'This month' },
+          { label:t.dashboard.total_raised, value:fmt(stats.total_raised_ngn), color:'#1B3A6B', icon:'💼', sparkline:[] as number[], sparkColor:'#1B3A6B', sub:'' },
+          { label:t.dashboard.active_projects, value:String(stats.active_projects), color:'#E63946', icon:'🌍', sparkline:[] as number[], sparkColor:'#E63946', sub:'Land Banking · Agri · PIC' },
+          { label:t.dashboard.active_investors, value:String(stats.total_investors), color:'#C9963A', icon:'👥', sparkline:[] as number[], sparkColor:'#C9963A', sub:`${stats.pending_payments} ${lang==='fr'?'paiements en attente':'pending payments'}` },
+          { label:t.dashboard.received_month, value:fmt(stats.monthly_received), color:'#16a34a', icon:'✅', sparkline:[] as number[], sparkColor:'#16a34a', sub:lang==='fr'?'Ce mois':'This month' },
         ].map((card) => (
           <div key={card.label} style={{ background:'#fff', borderRadius:16, padding:'18px 20px', border:'1px solid #E2E8F0', boxShadow:'0 2px 12px rgba(27,58,107,0.06)', position:'relative', overflow:'hidden' }}>
             <div style={{ position:'absolute', bottom:0, left:0, right:0, height:3, background:`linear-gradient(90deg, ${card.color}, ${card.color}66)` }} />
@@ -221,7 +212,10 @@ export default function DashboardPage() {
             <div style={{ fontFamily:'Syne,sans-serif', fontWeight:700, fontSize:15, color:'#0F1E35' }}>{t.dashboard.monthly_chart}</div>
             <div style={{ fontSize:11, color:'#94A3B8' }}>2026</div>
           </div>
-          <BarChart data={chartData} color='#1B3A6B' color2='#C9963A' height={160} />
+          {chartData.length > 0
+            ? <BarChart data={chartData} color='#1B3A6B' color2='#C9963A' height={160} />
+            : <div style={{ height:160, display:'flex', alignItems:'center', justifyContent:'center', color:'#94A3B8', fontSize:14 }}>{lang==='fr'?'Aucune donnée':'No data'}</div>
+          }
           <div style={{ display:'flex', gap:16, justifyContent:'center', marginTop:8 }}>
             {[['#1B3A6B', lang==='fr'?'Paiements reçus':'Payments received'],['#C9963A', lang==='fr'?'Frais facilitation':'Facilitation fees']].map(([c,l]) => (
               <div key={String(l)} style={{ display:'flex', alignItems:'center', gap:6 }}>
@@ -235,19 +229,25 @@ export default function DashboardPage() {
         {/* Donut investisseurs par pays */}
         <div style={{ background:'#fff', borderRadius:16, border:'1px solid #E2E8F0', padding:24, boxShadow:'0 2px 8px rgba(27,58,107,0.05)' }}>
           <div style={{ fontFamily:'Syne,sans-serif', fontWeight:700, fontSize:15, color:'#0F1E35', marginBottom:16 }}>{t.dashboard.investors_chart}</div>
-          <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:14 }}>
-            <DonutChart segments={COUNTRIES} size={130} />
-            <div style={{ width:'100%' }}>
-              {COUNTRIES.map(c => (
-                <div key={c.label} style={{ display:'flex', alignItems:'center', gap:8, padding:'5px 0', borderBottom:'1px solid #F1F5F9' }}>
-                  <div style={{ width:10, height:10, borderRadius:2, background:c.color, flexShrink:0 }} />
-                  <span style={{ flex:1, fontSize:13, color:'#374151' }}>🌍 {c.label}</span>
-                  <span style={{ fontSize:13, fontWeight:700, color:c.color }}>{c.value}</span>
-                  <span style={{ fontSize:11, color:'#94A3B8' }}>{Math.round(c.value/37*100)}%</span>
+          {countries.length === 0
+            ? <div style={{ height:130, display:'flex', alignItems:'center', justifyContent:'center', color:'#94A3B8', fontSize:14 }}>{lang==='fr'?'Aucune donnée':'No data'}</div>
+            : <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:14 }}>
+                <DonutChart segments={countries} size={130} />
+                <div style={{ width:'100%' }}>
+                  {countries.map((c: any) => {
+                    const total = countries.reduce((s: number, x: any) => s + x.value, 0) || 1;
+                    return (
+                      <div key={c.label} style={{ display:'flex', alignItems:'center', gap:8, padding:'5px 0', borderBottom:'1px solid #F1F5F9' }}>
+                        <div style={{ width:10, height:10, borderRadius:2, background:c.color, flexShrink:0 }} />
+                        <span style={{ flex:1, fontSize:13, color:'#374151' }}>🌍 {c.label}</span>
+                        <span style={{ fontSize:13, fontWeight:700, color:c.color }}>{c.value}</span>
+                        <span style={{ fontSize:11, color:'#94A3B8' }}>{Math.round(c.value / total * 100)}%</span>
+                      </div>
+                    );
+                  })}
                 </div>
-              ))}
-            </div>
-          </div>
+              </div>
+          }
         </div>
       </div>
 
@@ -256,21 +256,24 @@ export default function DashboardPage() {
         {/* Graphique capital par projet */}
         <div style={{ background:'#fff', borderRadius:16, border:'1px solid #E2E8F0', padding:24, boxShadow:'0 2px 8px rgba(27,58,107,0.05)' }}>
           <div style={{ fontFamily:'Syne,sans-serif', fontWeight:700, fontSize:15, color:'#0F1E35', marginBottom:16 }}>{t.dashboard.projects_chart}</div>
-          {PROJECTS_DATA.map(p => {
-            const pct = Math.round(p.raised / p.target * 100);
-            return (
-              <div key={p.name} style={{ marginBottom:14 }}>
-                <div style={{ display:'flex', justifyContent:'space-between', fontSize:13, marginBottom:5 }}>
-                  <span style={{ color:'#374151', fontWeight:500 }}>{p.name}</span>
-                  <span style={{ fontWeight:700, color:p.color }}>{fmt(p.raised)} <span style={{ color:'#94A3B8', fontWeight:400 }}>/ {fmt(p.target)}</span></span>
-                </div>
-                <div style={{ height:8, background:'#F1F5F9', borderRadius:4, overflow:'hidden' }}>
-                  <div style={{ height:'100%', width:`${pct}%`, background:p.color, borderRadius:4, transition:'width 0.6s ease' }} />
-                </div>
-                <div style={{ fontSize:11, color:'#94A3B8', marginTop:3 }}>{pct}%</div>
-              </div>
-            );
-          })}
+          {projectsData.length === 0
+            ? <div style={{ textAlign:'center', padding:32, color:'#94A3B8', fontSize:14 }}>{lang==='fr'?'Aucune donnée':'No data'}</div>
+            : projectsData.map((p: any) => {
+                const pct = p.target > 0 ? Math.round(p.raised / p.target * 100) : 0;
+                return (
+                  <div key={p.name} style={{ marginBottom:14 }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', fontSize:13, marginBottom:5 }}>
+                      <span style={{ color:'#374151', fontWeight:500 }}>{p.name}</span>
+                      <span style={{ fontWeight:700, color:p.color ?? '#1B3A6B' }}>{fmt(p.raised)} <span style={{ color:'#94A3B8', fontWeight:400 }}>/ {fmt(p.target)}</span></span>
+                    </div>
+                    <div style={{ height:8, background:'#F1F5F9', borderRadius:4, overflow:'hidden' }}>
+                      <div style={{ height:'100%', width:`${pct}%`, background:p.color ?? '#1B3A6B', borderRadius:4, transition:'width 0.6s ease' }} />
+                    </div>
+                    <div style={{ fontSize:11, color:'#94A3B8', marginTop:3 }}>{pct}%</div>
+                  </div>
+                );
+              })
+          }
         </div>
 
         {/* Souscriptions récentes */}
@@ -279,24 +282,28 @@ export default function DashboardPage() {
             <div style={{ fontFamily:'Syne,sans-serif', fontWeight:700, fontSize:15, color:'#0F1E35' }}>{t.dashboard.recent_subs}</div>
             <a href="/admin/subscriptions" style={{ fontSize:12, color:'#E63946', fontWeight:700, textDecoration:'none' }}>{t.common.view} →</a>
           </div>
-          {RECENT_SUBS.map((sub, i) => {
-            const st = STATUS_STYLE[sub.status] ?? STATUS_STYLE.pending;
-            const stLabel = lang === 'fr' ? STATUS_LABEL_FR[sub.status] : STATUS_LABEL_EN[sub.status];
-            const initials = sub.investor.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase();
-            return (
-              <div key={i} style={{ display:'flex', alignItems:'center', gap:12, padding:'13px 20px', borderBottom: i < RECENT_SUBS.length-1 ? '1px solid #F1F5F9' : 'none' }}>
-                <div style={{ width:32, height:32, borderRadius:'50%', background:'#1B3A6B', display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontSize:11, fontWeight:700, flexShrink:0 }}>{initials}</div>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontSize:13, fontWeight:600, color:'#0F1E35', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{sub.investor}</div>
-                  <div style={{ fontSize:11, color:'#94A3B8', marginTop:1 }}>{sub.project}</div>
-                </div>
-                <div style={{ textAlign:'right' }}>
-                  <div style={{ fontSize:13, fontWeight:700, color:'#1B3A6B' }}>{fmt(sub.amount)}</div>
-                  <span style={{ fontSize:10, padding:'2px 8px', borderRadius:999, background:st.bg, color:st.text, fontWeight:700 }}>{stLabel}</span>
-                </div>
-              </div>
-            );
-          })}
+          {recentSubs.length === 0
+            ? <div style={{ textAlign:'center', padding:'32px 20px', color:'#94A3B8', fontSize:14 }}>{lang==='fr'?'Aucune souscription récente':'No recent subscriptions'}</div>
+            : recentSubs.map((sub: any, i: number) => {
+                const st = STATUS_STYLE[sub.status] ?? STATUS_STYLE.pending;
+                const stLabel = lang === 'fr' ? STATUS_LABEL_FR[sub.status] : STATUS_LABEL_EN[sub.status];
+                const investorName = sub.investor ?? sub.investor_name ?? '—';
+                const initials = investorName.split(' ').map((n: string) => n[0]).join('').slice(0,2).toUpperCase();
+                return (
+                  <div key={i} style={{ display:'flex', alignItems:'center', gap:12, padding:'13px 20px', borderBottom: i < recentSubs.length-1 ? '1px solid #F1F5F9' : 'none' }}>
+                    <div style={{ width:32, height:32, borderRadius:'50%', background:'#1B3A6B', display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontSize:11, fontWeight:700, flexShrink:0 }}>{initials}</div>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontSize:13, fontWeight:600, color:'#0F1E35', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{investorName}</div>
+                      <div style={{ fontSize:11, color:'#94A3B8', marginTop:1 }}>{sub.project ?? sub.project_name}</div>
+                    </div>
+                    <div style={{ textAlign:'right' }}>
+                      <div style={{ fontSize:13, fontWeight:700, color:'#1B3A6B' }}>{fmt(sub.amount ?? sub.amount_ngn ?? 0)}</div>
+                      <span style={{ fontSize:10, padding:'2px 8px', borderRadius:999, background:st.bg, color:st.text, fontWeight:700 }}>{stLabel}</span>
+                    </div>
+                  </div>
+                );
+              })
+          }
         </div>
       </div>
 

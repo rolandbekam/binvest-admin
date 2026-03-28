@@ -37,14 +37,14 @@ export default function AccountingPage() {
       const d = await r.json();
       setData(d);
     } catch {
-      setData(DEMO_DATA);
+      setData(null);
     }
     setLoading(false);
   };
 
   useEffect(() => { load(); }, [period, year]);
 
-  const d = data ?? DEMO_DATA;
+  const d = data ?? EMPTY_DATA;
   const maxBar = Math.max(...(d.monthly ?? []).map((m: any) => Math.max(m.total_received, m.facilitation_fees)), 1);
 
   const TABS = [
@@ -236,6 +236,11 @@ export default function AccountingPage() {
       {/* ── PAR PROJET ── */}
       {activeTab === 'projets' && (
         <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+          {(d.by_project ?? []).length === 0 && (
+            <div style={{ textAlign:'center', padding:48, color:'#94A3B8', background:'#fff', borderRadius:16, border:'1px solid #E2E8F0' }}>
+              {lang==='fr'?'Aucune donnée projet':'No project data'}
+            </div>
+          )}
           {(d.by_project ?? []).map((p: any) => {
             const pct = p.target > 0 ? Math.round(p.raised * 100 / p.target) : 0;
             return (
@@ -315,37 +320,12 @@ export default function AccountingPage() {
   );
 }
 
-// Données démo
-const DEMO_DATA = {
-  total_received: 48500000, facilitation_fees: 4850000,
-  management_fees: 1455000, pic_fees: 1850000,
-  growth_pct: 12, subs_count: 18, active_projects: 4,
-  pic_members: 37, recovery_rate: 87,
-  paid_tranches: 23, total_tranches: 31,
-  facilitation_pct: 45, received_pct: 35, management_pct: 12, pic_pct: 8,
-  monthly: [
-    { month:1, total_received:8200000, facilitation_fees:820000, management_fees:245000, pic_fees:300000 },
-    { month:2, total_received:9500000, facilitation_fees:950000, management_fees:285000, pic_fees:150000 },
-    { month:3, total_received:12000000, facilitation_fees:1200000, management_fees:360000, pic_fees:200000 },
-    { month:4, total_received:7800000, facilitation_fees:780000, management_fees:234000, pic_fees:100000 },
-    { month:5, total_received:11000000, facilitation_fees:1100000, management_fees:330000, pic_fees:250000 },
-    { month:6, total_received:0, facilitation_fees:0, management_fees:0, pic_fees:0 },
-    { month:7, total_received:0, facilitation_fees:0, management_fees:0, pic_fees:0 },
-    { month:8, total_received:0, facilitation_fees:0, management_fees:0, pic_fees:0 },
-    { month:9, total_received:0, facilitation_fees:0, management_fees:0, pic_fees:0 },
-    { month:10, total_received:0, facilitation_fees:0, management_fees:0, pic_fees:0 },
-    { month:11, total_received:0, facilitation_fees:0, management_fees:0, pic_fees:0 },
-    { month:12, total_received:0, facilitation_fees:0, management_fees:0, pic_fees:0 },
-  ],
-  by_project: [
-    { id:'p1', name:'Palmeraie Ogun State', target:50000000, raised:32000000, investors:8, subscriptions:8, facilitation_fees:3200000, management_fees_annual:960000, resale_pct:15, paid_tranches:12, total_tranches:18 },
-    { id:'p2', name:'Land Banking Lagos North', target:80000000, raised:64000000, investors:12, subscriptions:12, facilitation_fees:6400000, management_fees_annual:1920000, resale_pct:15, paid_tranches:8, total_tranches:10 },
-    { id:'p3', name:'Champ de Manioc Oyo', target:20000000, raised:12000000, investors:6, subscriptions:6, facilitation_fees:1200000, management_fees_annual:360000, resale_pct:15, paid_tranches:3, total_tranches:6 },
-  ],
-  transactions: [
-    { date:'2026-03-18', investor_name:'Jean Paul Mbarga', project_name:'Land Banking Lagos North', tranche_number:1, amount:2000000, method:'bank_transfer', reference:'TRF2026031801' },
-    { date:'2026-03-15', investor_name:'Adaora Okafor', project_name:'Land Banking Lagos North', tranche_number:1, amount:2500000, method:'bank_transfer', reference:'TRF2026031502' },
-    { date:'2026-03-12', investor_name:'Kofi Asante', project_name:'Palmeraie Ogun State', tranche_number:1, amount:1000000, method:'mobile_money', reference:'MTN2026031201' },
-    { date:'2026-03-05', investor_name:'Marie Ongono', project_name:'Palmeraie Ogun State', tranche_number:1, amount:500000, method:'bank_transfer', reference:'TRF2026030501' },
-  ],
+const EMPTY_DATA = {
+  total_received: 0, facilitation_fees: 0, management_fees: 0, pic_fees: 0,
+  growth_pct: 0, subs_count: 0, active_projects: 0, pic_members: 0,
+  recovery_rate: 0, paid_tranches: 0, total_tranches: 0,
+  facilitation_pct: 0, received_pct: 0, management_pct: 0, pic_pct: 0,
+  monthly: Array.from({ length: 12 }, (_, i) => ({ month: i + 1, total_received: 0, facilitation_fees: 0, management_fees: 0, pic_fees: 0 })),
+  by_project: [],
+  transactions: [],
 };

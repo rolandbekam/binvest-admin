@@ -14,17 +14,6 @@ const TRANCHE_STYLE: Record<string, { bg: string; text: string; label: string; l
   waived:   { bg:'#F1F5F9', text:'#64748B', label:'Annulé',      labelEn:'Waived' },
 };
 
-const DEMO_TRANCHES: any[] = [
-  { id:'t1', tranche_number:1, amount_ngn:1000000, status:'received', received_amount_ngn:1000000, received_date:'2026-01-18', due_date:'2026-01-15', payment_method:'bank_transfer', bank_reference:'TRF2026011801', subscription:{ dia_reference:'DIA-2026-A1B2C3D4', investor:{ full_name:'Jean Paul Mbarga' }, project:{ name:'Land Banking Lagos North' } } },
-  { id:'t2', tranche_number:2, amount_ngn:1200000, status:'received', received_amount_ngn:1200000, received_date:'2026-02-20', due_date:'2026-02-15', payment_method:'bank_transfer', bank_reference:'TRF2026022001', subscription:{ dia_reference:'DIA-2026-A1B2C3D4', investor:{ full_name:'Jean Paul Mbarga' }, project:{ name:'Land Banking Lagos North' } } },
-  { id:'t3', tranche_number:1, amount_ngn:500000, status:'received', received_amount_ngn:500000, received_date:'2026-02-05', due_date:'2026-02-01', payment_method:'mobile_money', bank_reference:'MTN2026020501', subscription:{ dia_reference:'DIA-2026-E5F6G7H8', investor:{ full_name:'Marie Ongono' }, project:{ name:'Palmeraie Ogun State' } } },
-  { id:'t4', tranche_number:2, amount_ngn:350000, status:'pending', received_amount_ngn:null, received_date:null, due_date:'2026-04-01', payment_method:null, bank_reference:null, subscription:{ dia_reference:'DIA-2026-E5F6G7H8', investor:{ full_name:'Marie Ongono' }, project:{ name:'Palmeraie Ogun State' } } },
-  { id:'t5', tranche_number:3, amount_ngn:250000, status:'pending', received_amount_ngn:null, received_date:null, due_date:'2026-07-01', payment_method:null, bank_reference:null, subscription:{ dia_reference:'DIA-2026-E5F6G7H8', investor:{ full_name:'Marie Ongono' }, project:{ name:'Palmeraie Ogun State' } } },
-  { id:'t6', tranche_number:1, amount_ngn:2500000, status:'received', received_amount_ngn:2500000, received_date:'2026-01-28', due_date:'2026-02-01', payment_method:'bank_transfer', bank_reference:'TRF2026012801', subscription:{ dia_reference:'DIA-2026-I9J0K1L2', investor:{ full_name:'Adaora Okafor' }, project:{ name:'Land Banking Lagos North' } } },
-  { id:'t7', tranche_number:2, amount_ngn:3000000, status:'late', received_amount_ngn:null, received_date:null, due_date:'2026-03-01', payment_method:null, bank_reference:null, subscription:{ dia_reference:'DIA-2026-I9J0K1L2', investor:{ full_name:'Adaora Okafor' }, project:{ name:'Land Banking Lagos North' } } },
-  { id:'t8', tranche_number:1, amount_ngn:1100000, status:'received', received_amount_ngn:1100000, received_date:'2026-02-12', due_date:'2026-02-10', payment_method:'bank_transfer', bank_reference:'TRF2026021201', subscription:{ dia_reference:'DIA-2026-M3N4O5P6', investor:{ full_name:'Kofi Asante' }, project:{ name:'Palmeraie Ogun State' } } },
-  { id:'t9', tranche_number:2, amount_ngn:1100000, status:'pending', received_amount_ngn:null, received_date:null, due_date:'2026-05-10', payment_method:null, bank_reference:null, subscription:{ dia_reference:'DIA-2026-M3N4O5P6', investor:{ full_name:'Kofi Asante' }, project:{ name:'Palmeraie Ogun State' } } },
-];
 
 const EMPTY_FORM = {
   subscription_id: '', tranche_number: '', received_amount_ngn: '',
@@ -42,8 +31,8 @@ export default function PaymentsPage() {
     return () => window.removeEventListener('lang-change', h);
   }, []);
 
-  const [tranches, setTranches] = useState<any[]>(DEMO_TRANCHES);
-  const [loading, setLoading] = useState(false);
+  const [tranches, setTranches] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState('');
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
@@ -51,14 +40,16 @@ export default function PaymentsPage() {
   const [form, setForm] = useState<any>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
+  const load = () => {
     setLoading(true);
     fetch('/api/admin/payments', { credentials: 'include' })
       .then(r => r.json())
-      .then(d => { if (d.tranches?.length > 0) setTranches(d.tranches); })
-      .catch(() => {})
+      .then(d => setTranches(d.tranches ?? []))
+      .catch(() => setTranches([]))
       .finally(() => setLoading(false));
-  }, []);
+  };
+
+  useEffect(() => { load(); }, []);
 
   const openRecord = (t: any) => {
     setSelectedTranche(t);
@@ -88,33 +79,17 @@ export default function PaymentsPage() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         credentials: 'include', body: JSON.stringify(body),
       });
-      if (r.ok) {
-        // Mettre à jour localement
-        setTranches(prev => prev.map(t =>
-          t.id === selectedTranche?.id
-            ? { ...t, status: 'received', received_amount_ngn: Number(form.received_amount_ngn), received_date: form.received_date, payment_method: form.payment_method, bank_reference: form.bank_reference }
-            : t
-        ));
-        toast.success(lang === 'fr' ? '✅ Paiement enregistré ! Accusé DIA généré.' : '✅ Payment recorded! DIA acknowledgement generated.');
-        setShowModal(false);
-      } else {
-        // Mode démo — mise à jour locale
-        setTranches(prev => prev.map(t =>
-          t.id === selectedTranche?.id
-            ? { ...t, status: 'received', received_amount_ngn: Number(form.received_amount_ngn), received_date: form.received_date, payment_method: form.payment_method, bank_reference: form.bank_reference }
-            : t
-        ));
-        toast.success(lang === 'fr' ? '✅ Paiement enregistré (mode démo)' : '✅ Payment recorded (demo mode)');
-        setShowModal(false);
+      const d = await r.json();
+      if (!r.ok) {
+        toast.error(d.error ?? (lang === 'fr' ? 'Erreur enregistrement' : 'Recording error'));
+        setSaving(false);
+        return;
       }
-    } catch {
-      setTranches(prev => prev.map(t =>
-        t.id === selectedTranche?.id
-          ? { ...t, status: 'received', received_amount_ngn: Number(form.received_amount_ngn), received_date: form.received_date }
-          : t
-      ));
-      toast.success(lang === 'fr' ? '✅ Paiement enregistré' : '✅ Payment recorded');
+      toast.success(lang === 'fr' ? '✅ Paiement enregistré ! Accusé DIA généré.' : '✅ Payment recorded! DIA acknowledgement generated.');
       setShowModal(false);
+      load();
+    } catch {
+      toast.error(lang === 'fr' ? 'Erreur réseau' : 'Network error');
     }
     setSaving(false);
   };

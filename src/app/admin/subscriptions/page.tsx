@@ -22,20 +22,13 @@ const TS: Record<string, {bg:string;text:string;label:string;icon:string}> = {
 };
 const TI: Record<string,string> = {land_banking:'🌍',agriculture_palmier:'🌴',agriculture_manioc:'🌿',capital_markets:'📈',immobilier:'🏗️'};
 
-const DEMO: any[] = [
-  {id:'s1',investor:{full_name:'Jean Paul Mbarga',email:'jp@mail.com',country:'CM'},project:{name:'Land Banking Lagos North',type:'land_banking'},status:'complete',amount_ngn:2000000,facilitation_fee_ngn:200000,total_amount_ngn:2200000,tranches_count:2,dia_reference:'DIA-2026-A1B2C3D4',created_at:'2026-01-15T10:00:00Z',tranches:[{id:'t1',tranche_number:1,amount_ngn:1200000,status:'received',received_amount_ngn:1200000,received_date:'2026-01-18',payment_method:'bank_transfer',bank_reference:'TRF2026011801'},{id:'t2',tranche_number:2,amount_ngn:1000000,status:'received',received_amount_ngn:1000000,received_date:'2026-02-20',payment_method:'bank_transfer',bank_reference:'TRF2026022001'}]},
-  {id:'s2',investor:{full_name:'Marie Ongono',email:'marie@mail.com',country:'CM'},project:{name:'Palmeraie Ogun State',type:'agriculture_palmier'},status:'partial',amount_ngn:1000000,facilitation_fee_ngn:100000,total_amount_ngn:1100000,tranches_count:3,dia_reference:'DIA-2026-E5F6G7H8',created_at:'2026-02-01T10:00:00Z',tranches:[{id:'t3',tranche_number:1,amount_ngn:400000,status:'received',received_amount_ngn:400000,received_date:'2026-02-05',payment_method:'mobile_money',bank_reference:'MTN2026020501'},{id:'t4',tranche_number:2,amount_ngn:350000,status:'pending',received_amount_ngn:null,received_date:null,payment_method:null,bank_reference:null,due_date:'2026-04-01'},{id:'t5',tranche_number:3,amount_ngn:250000,status:'pending',received_amount_ngn:null,received_date:null,payment_method:null,bank_reference:null,due_date:'2026-07-01'}]},
-  {id:'s3',investor:{full_name:'Adaora Okafor',email:'adaora@mail.com',country:'NG'},project:{name:'Land Banking Lagos North',type:'land_banking'},status:'partial',amount_ngn:5000000,facilitation_fee_ngn:500000,total_amount_ngn:5500000,tranches_count:2,dia_reference:'DIA-2026-I9J0K1L2',created_at:'2026-01-20T10:00:00Z',tranches:[{id:'t6',tranche_number:1,amount_ngn:2500000,status:'received',received_amount_ngn:2500000,received_date:'2026-01-28',payment_method:'bank_transfer',bank_reference:'TRF2026012801'},{id:'t7',tranche_number:2,amount_ngn:3000000,status:'late',received_amount_ngn:null,received_date:null,payment_method:null,bank_reference:null,due_date:'2026-03-01'}]},
-  {id:'s4',investor:{full_name:'Kofi Asante',email:'kofi@mail.com',country:'GH'},project:{name:'Palmeraie Ogun State',type:'agriculture_palmier'},status:'active',amount_ngn:3000000,facilitation_fee_ngn:300000,total_amount_ngn:3300000,tranches_count:3,dia_reference:'DIA-2026-M3N4O5P6',created_at:'2026-02-10T10:00:00Z',tranches:[{id:'t8',tranche_number:1,amount_ngn:1100000,status:'received',received_amount_ngn:1100000,received_date:'2026-02-12',payment_method:'bank_transfer',bank_reference:'TRF2026021201'},{id:'t9',tranche_number:2,amount_ngn:1100000,status:'pending',received_amount_ngn:null,received_date:null,payment_method:null,bank_reference:null,due_date:'2026-05-10'},{id:'t10',tranche_number:3,amount_ngn:1100000,status:'pending',received_amount_ngn:null,received_date:null,payment_method:null,bank_reference:null,due_date:'2026-08-10'}]},
-  {id:'s5',investor:{full_name:'Rose Bella',email:'rose@mail.com',country:'CM'},project:{name:'Capital Markets PIC Q2',type:'capital_markets'},status:'complete',amount_ngn:550000,facilitation_fee_ngn:55000,total_amount_ngn:605000,tranches_count:1,dia_reference:'DIA-2026-Q7R8S9T0',created_at:'2026-02-15T10:00:00Z',tranches:[{id:'t11',tranche_number:1,amount_ngn:605000,status:'received',received_amount_ngn:605000,received_date:'2026-02-15',payment_method:'bank_transfer',bank_reference:'TRF2026021501'}]},
-];
 
 export default function SubscriptionsPage() {
   const [lang, setL] = useState<Lang>('fr');
   useEffect(() => { setL(getLang()); const h=()=>setL(getLang()); window.addEventListener('lang-change',h); return()=>window.removeEventListener('lang-change',h); },[]);
 
-  const [subs, setSubs] = useState<any[]>(DEMO);
-  const [loading, setLoading] = useState(false);
+  const [subs, setSubs] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState('');
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<any>(null);
@@ -43,7 +36,10 @@ export default function SubscriptionsPage() {
 
   useEffect(() => {
     fetch('/api/admin/subscriptions', { credentials: 'include' })
-      .then(r=>r.json()).then(d=>{ if(d.subscriptions?.length>0) setSubs(d.subscriptions); }).catch(()=>{});
+      .then(r => r.json())
+      .then(d => setSubs(d.subscriptions ?? []))
+      .catch(() => setSubs([]))
+      .finally(() => setLoading(false));
   }, []);
 
   const filtered = subs.filter(s => {
@@ -128,7 +124,11 @@ export default function SubscriptionsPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((sub,i)=>{
+              {loading ? (
+                <tr><td colSpan={8} style={{textAlign:'center',padding:48,color:'#94A3B8'}}>{lang==='fr'?'Chargement...':'Loading...'}</td></tr>
+              ) : filtered.length === 0 ? (
+                <tr><td colSpan={8} style={{textAlign:'center',padding:48,color:'#94A3B8'}}>{lang==='fr'?'Aucune souscription':'No subscriptions'}</td></tr>
+              ) : filtered.map((sub,i)=>{
                 const st=SS[sub.status]??SS.pending;
                 const p=pct(sub);
                 const initials=sub.investor?.full_name?.split(' ').map((n:string)=>n[0]).join('').slice(0,2).toUpperCase()??'??';
