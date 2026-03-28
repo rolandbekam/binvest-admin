@@ -200,3 +200,100 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 });
   }
 }
+
+// ── PATCH — Valider ou rejeter une payment_request ───────────────
+export async function PATCH(request: NextRequest) {
+  const admin = getAdminFromHeaders(request.headers);
+  if (!admin.id) return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
+  if (!hasPermission(admin.role, 'write')) return NextResponse.json({ error: 'Permission refusée' }, { status: 403 });
+
+  try {
+    const body = await request.json();
+    const { request_id, action, rejection_reason } = body;
+
+    if (!request_id || !['approve', 'reject'].includes(action)) {
+      return NextResponse.json({ error: 'request_id et action (approve|reject) requis' }, { status: 400 });
+    }
+
+    const supabase = createAdminClient();
+
+    // Get the payment request
+    const { data: req, error: reqErr } = await supabase
+      .from('payment_requests')
+      .select('*, subscription:subscriptions(id, dia_reference, investor:investors(full_name, email), project:projects(name))')
+      .eq('id', request_id)
+      .single();
+
+    if (reqErr || !req) {
+      return NextResponse.json({ error: 'Demande de paiement introuvable' }, { status: 404 });
+    }
+
+    if (req.status !== 'submitted') {
+      return NextResponse.json({ error: `Cette demande est déjà ${req.status}` }, { status: 409 });
+    }
+
+    if (action === 'approve') {
+      // Update payment_request status
+      await supabase.from('payment_requests').update({ status: 'approved', reviewed_by: admin.id, reviewed_at: new Date().toISOString() }).eq('id', request_id);
+
+      // Record the actual payment tranche
+      const { error: trancheErr } = await supabase
+        .from('payment_tranches')
+        .update({
+          status: 'received',
+          received_amount_ngn: req.amount_ngn,
+          received_date: req.submitted_at ? new Date(req.submitted_at).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
+          received_currency: req.currency ?? 'NGN',
+          payment_method: req.payment_method ?? 'mobile_money',
+          bank_reference: req.proof_reference ?? req.id.slice(0, 12).toUpperCase(),
+          notes: `Validé depuis payment_request ${request_id}`,
+          acknowledgement_issued: true,
+          acknowledgement_date: new Date().toISOString(),
+          recorded_by: admin.id,
+        })
+        .eq('subscription_id', req.subscription_id)
+        .eq('tranche_number', req.tranche_number ?? 1);
+
+      if (trancheErr) throw trancheErr;
+
+      // Update subscription status if all tranches paid
+      const { data: allTranches } = await supabase
+        .from('payment_tranches')
+        .select('status')
+        .eq('subscription_id', req.subscription_id);
+
+      if (allTranches?.every(t => t.status === 'received')) {
+        await supabase.from('subscriptions').update({ status: 'complete' }).eq('id', req.subscription_id);
+      }
+
+      await auditLog({
+        adminId: admin.id, adminEmail: admin.email,
+        action: 'payment_request.approve', resourceType: 'payment_request', resourceId: request_id,
+        newValues: { action: 'approved', amount: req.amount_ngn },
+        ipAddress: admin.ip, severity: 'critical',
+      });
+
+      return NextResponse.json({ success: true, action: 'approved' });
+    } else {
+      // Reject
+      await supabase.from('payment_requests').update({
+        status: 'rejected',
+        rejection_reason: rejection_reason ?? 'Rejeté par l\'administrateur',
+        reviewed_by: admin.id,
+        reviewed_at: new Date().toISOString(),
+      }).eq('id', request_id);
+
+      await auditLog({
+        adminId: admin.id, adminEmail: admin.email,
+        action: 'payment_request.reject', resourceType: 'payment_request', resourceId: request_id,
+        newValues: { action: 'rejected', reason: rejection_reason },
+        ipAddress: admin.ip, severity: 'warning',
+      });
+
+      return NextResponse.json({ success: true, action: 'rejected' });
+    }
+  } catch (err: any) {
+    console.error('[PAYMENTS PATCH]', err);
+    return NextResponse.json({ error: err.message ?? 'Erreur serveur' }, { status: 500 });
+  }
+}

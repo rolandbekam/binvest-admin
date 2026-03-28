@@ -112,22 +112,22 @@ export default function InvestorDetailPage() {
 
   if (loading) return <div style={{ textAlign:'center', padding:60, color:'#94A3B8', fontFamily:'Outfit,sans-serif' }}>{t.common.loading}</div>;
 
-  // Données démo si API pas encore connectée
-  const inv = data?.investor ?? {
-    full_name:'Jean Paul Mbarga', email:'jp@binvest.ng', phone:'+237 6XX XXX XXX',
-    country:'CM', nationality:'Camerounaise', id_type:'passport', address:'Yaoundé, Cameroun',
-    pic_member:true, pic_fee_paid:true, dia_signed:true, kyc_status:'approved',
-    risk_profile:'moderate', total_invested_ngn:2000000, created_at:'2026-01-15T00:00:00Z', notes:'',
-  };
-  const subs = data?.subscriptions ?? [
-    { id:'s1', project:{ name:'Land Banking Lagos North', type:'land_banking', status:'open' }, status:'complete', amount_ngn:2000000, facilitation_fee_ngn:200000, total_amount_ngn:2200000, tranches_count:2, dia_reference:'DIA-2026-A1B2C3D4', created_at:'2026-01-15T00:00:00Z',
-      tranches:[
-        { id:'t1', tranche_number:1, amount_ngn:1200000, status:'received', received_amount_ngn:1200000, received_date:'2026-01-18', due_date:'2026-01-15', payment_method:'bank_transfer', bank_reference:'TRF202601180' },
-        { id:'t2', tranche_number:2, amount_ngn:1000000, status:'received', received_amount_ngn:1000000, received_date:'2026-03-20', due_date:'2026-03-15', payment_method:'bank_transfer', bank_reference:'TRF202603200' },
-      ]
-    },
-  ];
-  const tranches = data?.tranches ?? subs.flatMap((s: any) => s.tranches ?? []);
+  if (!data?.investor) return (
+    <div style={{ textAlign:'center', padding:80, fontFamily:'Outfit,sans-serif' }}>
+      <div style={{ fontSize:48, marginBottom:16 }}>❌</div>
+      <div style={{ fontSize:18, fontWeight:600, color:'#374151' }}>
+        {lang === 'fr' ? 'Investisseur introuvable' : 'Investor not found'}
+      </div>
+      <button onClick={() => router.push('/admin/investors')}
+        style={{ marginTop:24, padding:'10px 20px', borderRadius:10, border:'none', background:'#1B3A6B', color:'#fff', cursor:'pointer', fontWeight:700 }}>
+        {t.common.back}
+      </button>
+    </div>
+  );
+
+  const inv = data.investor;
+  const subs = data?.subscriptions ?? [];
+  const tranches = data?.tranches ?? [];
 
   const totalPaid = tranches.filter((t:any) => t.status === 'received').reduce((s:number,t:any) => s+(t.received_amount_ngn||0), 0);
   const totalPending = tranches.filter((t:any) => t.status === 'pending').reduce((s:number,t:any) => s+t.amount_ngn, 0);

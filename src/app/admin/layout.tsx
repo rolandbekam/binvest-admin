@@ -41,6 +41,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { href: '/admin/ngx', icon: '📈', label: t.ngx },
     { section: t.s_members },
     { href: '/admin/investors',  icon: '👥', label: t.investors },
+    { href: '/admin/pic',        icon: '🏛️', label: t.pic },
     { href: '/admin/tontines',   icon: '🤝', label: t.tontines },
     { href: '/admin/documents',  icon: '📄', label: t.documents },
     { section: t.s_security },

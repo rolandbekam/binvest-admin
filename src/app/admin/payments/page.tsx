@@ -39,6 +39,8 @@ export default function PaymentsPage() {
   const [selectedTranche, setSelectedTranche] = useState<any>(null);
   const [form, setForm] = useState<any>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+  const [paymentRequests, setPaymentRequests] = useState<any[]>([]);
+  const [processingReq, setProcessingReq] = useState<string | null>(null);
 
   const load = () => {
     setLoading(true);
@@ -47,6 +49,35 @@ export default function PaymentsPage() {
       .then(d => setTranches(d.tranches ?? []))
       .catch(() => setTranches([]))
       .finally(() => setLoading(false));
+    // Load payment requests from mobile app
+    fetch('/api/admin/payment-requests', { credentials: 'include' })
+      .then(r => r.json())
+      .then(d => setPaymentRequests(d.requests ?? []))
+      .catch(() => setPaymentRequests([]));
+  };
+
+  const handleRequest = async (requestId: string, action: 'approve' | 'reject') => {
+    setProcessingReq(requestId);
+    try {
+      const r = await fetch('/api/admin/payments', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ request_id: requestId, action }),
+      });
+      const d = await r.json();
+      if (!r.ok) {
+        toast.error(d.error ?? (lang === 'fr' ? 'Erreur' : 'Error'));
+      } else {
+        toast.success(action === 'approve'
+          ? (lang === 'fr' ? '✅ Paiement validé' : '✅ Payment approved')
+          : (lang === 'fr' ? '❌ Demande rejetée' : '❌ Request rejected'));
+        load();
+      }
+    } catch {
+      toast.error(lang === 'fr' ? 'Erreur réseau' : 'Network error');
+    }
+    setProcessingReq(null);
   };
 
   useEffect(() => { load(); }, []);
@@ -149,6 +180,84 @@ export default function PaymentsPage() {
           </div>
         ))}
       </div>
+
+      {/* ── Demandes de paiement soumises depuis l'app mobile ── */}
+      {paymentRequests.length > 0 && (
+        <div style={{ marginBottom: 24, background: '#fff', borderRadius: 16, border: '2px solid #C9963A', overflow: 'hidden' }}>
+          <div style={{ padding: '14px 20px', background: 'linear-gradient(135deg,#C9963A15,#C9963A05)', borderBottom: '1px solid #C9963A30', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 20 }}>📱</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 700, color: '#92400E', fontSize: 15 }}>
+                {paymentRequests.length} {lang === 'fr' ? 'demande(s) en attente de validation' : 'payment request(s) awaiting validation'}
+              </div>
+              <div style={{ fontSize: 12, color: '#B45309', marginTop: 1 }}>
+                {lang === 'fr' ? 'Soumises depuis l\'app Buam Finance' : 'Submitted from the Buam Finance app'}
+              </div>
+            </div>
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: '#FFFBEB' }}>
+                  {[lang==='fr'?'Investisseur':'Investor', lang==='fr'?'Projet':'Project', lang==='fr'?'Tranche':'Instalment', lang==='fr'?'Montant':'Amount', lang==='fr'?'Méthode':'Method', lang==='fr'?'Date soumission':'Submitted', lang==='fr'?'Preuve':'Proof', lang==='fr'?'Actions':'Actions'].map(h => (
+                    <th key={h} style={{ textAlign:'left', padding:'10px 14px', fontSize:11, color:'#92400E', textTransform:'uppercase', fontWeight:700, borderBottom:'1px solid #FDE68A' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {paymentRequests.map((req, i) => (
+                  <tr key={req.id} style={{ borderBottom: i < paymentRequests.length - 1 ? '1px solid #FEF9C3' : 'none' }}>
+                    <td style={{ padding:'12px 14px', fontSize:13, fontWeight:600, color:'#0F1E35' }}>
+                      {req.subscription?.investor?.full_name ?? '—'}
+                    </td>
+                    <td style={{ padding:'12px 14px', fontSize:13, color:'#5A6E8A' }}>
+                      {req.subscription?.project?.name ?? '—'}
+                    </td>
+                    <td style={{ padding:'12px 14px' }}>
+                      <span style={{ fontSize:12, fontWeight:700, padding:'3px 10px', borderRadius:999, background:'#EFF6FF', color:'#1E40AF' }}>
+                        #{req.tranche_number ?? 1}
+                      </span>
+                    </td>
+                    <td style={{ padding:'12px 14px', fontWeight:700, color:'#0F1E35', fontSize:14 }}>
+                      {fmt(req.amount_ngn ?? 0)}
+                    </td>
+                    <td style={{ padding:'12px 14px', fontSize:12, color:'#5A6E8A' }}>
+                      {req.payment_method?.replace(/_/g,' ') ?? '—'}
+                    </td>
+                    <td style={{ padding:'12px 14px', fontSize:12, color:'#5A6E8A' }}>
+                      {req.submitted_at ? new Date(req.submitted_at).toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-GB') : '—'}
+                    </td>
+                    <td style={{ padding:'12px 14px' }}>
+                      {req.proof_url ? (
+                        <a href={req.proof_url} target="_blank" rel="noreferrer"
+                          style={{ fontSize:12, color:'#1B3A6B', fontWeight:600, textDecoration:'none' }}>
+                          🔗 {lang === 'fr' ? 'Voir' : 'View'}
+                        </a>
+                      ) : <span style={{ color:'#94A3B8', fontSize:12 }}>—</span>}
+                    </td>
+                    <td style={{ padding:'12px 14px' }}>
+                      <div style={{ display:'flex', gap:6 }}>
+                        <button
+                          onClick={() => handleRequest(req.id, 'approve')}
+                          disabled={processingReq === req.id}
+                          style={{ padding:'6px 12px', borderRadius:8, border:'none', background: processingReq === req.id ? '#94A3B8' : '#16a34a', color:'#fff', cursor: processingReq === req.id ? 'not-allowed' : 'pointer', fontSize:12, fontWeight:700 }}>
+                          ✅ {lang === 'fr' ? 'Valider' : 'Approve'}
+                        </button>
+                        <button
+                          onClick={() => handleRequest(req.id, 'reject')}
+                          disabled={processingReq === req.id}
+                          style={{ padding:'6px 12px', borderRadius:8, border:'1px solid #E63946', background:'#fff', color:'#E63946', cursor: processingReq === req.id ? 'not-allowed' : 'pointer', fontSize:12, fontWeight:700 }}>
+                          ❌ {lang === 'fr' ? 'Rejeter' : 'Reject'}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Alertes retards */}
       {stats.late > 0 && (

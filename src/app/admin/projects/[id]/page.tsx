@@ -43,7 +43,7 @@ export default function ProjectDetailPage() {
     try {
       const [projRes, subsRes] = await Promise.all([
         fetch(`/api/admin/projects/${id}`, { credentials: 'include' }),
-        fetch(`/api/admin/subscriptions`, { credentials: 'include' }),
+        fetch(`/api/admin/subscriptions?project_id=${id}`, { credentials: 'include' }),
       ]);
       const projData = await projRes.json();
       const subsData = await subsRes.json();
@@ -52,7 +52,7 @@ export default function ProjectDetailPage() {
         setForm(projData.project);
       }
       if (subsData.subscriptions) {
-        setSubscriptions(subsData.subscriptions.filter((s: any) => s.project_id === id || s.project?.id === id));
+        setSubscriptions(subsData.subscriptions);
       }
     } catch { toast.error(lang === 'fr' ? 'Erreur de chargement' : 'Load error'); }
     setLoading(false);
