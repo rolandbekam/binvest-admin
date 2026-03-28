@@ -12,6 +12,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [admin, setAdmin] = useState<any>(null);
   const [collapsed, setCollapsed] = useState(false);
   const [lang, setLangState] = useState<Lang>('fr');
+  const [kycPending, setKycPending] = useState(0);
+  const [kycDismissed, setKycDismissed] = useState(false);
 
   useEffect(() => {
     setLangState(getLang());
@@ -25,6 +27,22 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       .then(r => r.json()).then(d => { if (d.admin) setAdmin(d.admin); })
       .catch(() => {});
   }, []);
+
+  // Poll KYC pending count every 60s
+  useEffect(() => {
+    const fetchKyc = () => {
+      fetch('/api/admin/investors?kyc_status=pending', { credentials: 'include' })
+        .then(r => r.json())
+        .then(d => setKycPending((d.investors ?? []).length))
+        .catch(() => {});
+    };
+    fetchKyc();
+    const timer = setInterval(fetchKyc, 60000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Reset dismissed state when count changes
+  useEffect(() => { setKycDismissed(false); }, [kycPending]);
 
   const t = T[lang].nav;
 
@@ -40,7 +58,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { section: t.s_market },
     { href: '/admin/ngx', icon: '📈', label: t.ngx },
     { section: t.s_members },
-    { href: '/admin/investors',  icon: '👥', label: t.investors },
+    { href: '/admin/investors',  icon: '👥', label: t.investors, badge: kycPending > 0 ? kycPending : undefined },
     { href: '/admin/pic',        icon: '🏛️', label: t.pic },
     { href: '/admin/tontines',   icon: '🤝', label: t.tontines },
     { href: '/admin/documents',  icon: '📄', label: t.documents },
@@ -64,6 +82,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   const currentLabel = NAV.find(n => 'href' in n && pathname.startsWith((n as any).href))?.label ?? '';
 
+  const showKycBanner = kycPending > 0 && !kycDismissed && !pathname.startsWith('/admin/investors');
+
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: '#F4F6FA', fontFamily: 'Outfit,sans-serif' }}>
 
@@ -79,12 +99,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         {/* Logo */}
         <div style={{ padding: '20px 16px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', gap: 10, minHeight: 80 }}>
           {collapsed ? (
-            // Logo compact (juste le symbole pilier)
             <div style={{ width: 38, height: 38, borderRadius: 8, overflow: 'hidden', flexShrink: 0, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Image src="/logo-binvest.jpg" alt="B-Invest" width={36} height={36} style={{ objectFit: 'cover', objectPosition: 'top' }} />
             </div>
           ) : (
-            // Logo plein
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1 }}>
               <div style={{ width: 44, height: 44, borderRadius: 10, overflow: 'hidden', flexShrink: 0, background: '#fff', padding: 3 }}>
                 <Image src="/logo-binvest.jpg" alt="B-Invest" width={38} height={38} style={{ objectFit: 'contain', width: '100%', height: '100%' }} />
@@ -114,6 +132,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               );
             }
             const active = pathname.startsWith(item.href!);
+            const badge = (item as any).badge as number | undefined;
             return (
               <Link key={item.href} href={item.href!} style={{
                 display: 'flex', alignItems: 'center', gap: 10,
@@ -123,12 +142,40 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 color: active ? '#fff' : 'rgba(255,255,255,0.5)',
                 background: active ? 'rgba(201,150,58,0.18)' : 'transparent',
                 border: `1px solid ${active ? 'rgba(201,150,58,0.35)' : 'transparent'}`,
+                position: 'relative',
               }}>
-                <span style={{ fontSize: 16, flexShrink: 0 }}>{item.icon}</span>
+                <span style={{ fontSize: 16, flexShrink: 0, position: 'relative' }}>
+                  {item.icon}
+                  {/* Badge on icon when collapsed */}
+                  {badge && collapsed && (
+                    <span style={{
+                      position: 'absolute', top: -4, right: -6,
+                      minWidth: 16, height: 16, borderRadius: 999,
+                      background: '#E63946', color: '#fff',
+                      fontSize: 9, fontWeight: 800,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      padding: '0 3px', lineHeight: 1, border: '1.5px solid #1B3A6B',
+                    }}>
+                      {badge > 99 ? '99+' : badge}
+                    </span>
+                  )}
+                </span>
                 {!collapsed && (
-                  <span style={{ fontSize: 13, fontWeight: active ? 700 : 500 }}>{item.label}</span>
+                  <span style={{ fontSize: 13, fontWeight: active ? 700 : 500, flex: 1 }}>{item.label}</span>
                 )}
-                {active && !collapsed && (
+                {/* Badge inline when expanded */}
+                {badge && !collapsed && (
+                  <span style={{
+                    minWidth: 20, height: 18, borderRadius: 999,
+                    background: '#E63946', color: '#fff',
+                    fontSize: 10, fontWeight: 800,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    padding: '0 5px', lineHeight: 1, flexShrink: 0,
+                  }}>
+                    {badge > 99 ? '99+' : badge}
+                  </span>
+                )}
+                {active && !collapsed && !badge && (
                   <div style={{ marginLeft: 'auto', width: 5, height: 5, borderRadius: '50%', background: '#C9963A', flexShrink: 0 }} />
                 )}
               </Link>
@@ -181,12 +228,64 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             {currentLabel}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {/* KYC alert badge in topbar */}
+            {kycPending > 0 && (
+              <Link href="/admin/investors?kyc_status=pending" style={{ textDecoration: 'none' }}>
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '5px 12px', borderRadius: 999,
+                  background: '#FEF2F2', border: '1px solid #FECACA',
+                  color: '#991B1B', fontSize: 12, fontWeight: 700,
+                  cursor: 'pointer', transition: 'all 0.15s',
+                }}>
+                  <span style={{ fontSize: 14 }}>🔴</span>
+                  <span>
+                    {kycPending} KYC {lang === 'fr' ? 'en attente' : 'pending'}
+                  </span>
+                </div>
+              </Link>
+            )}
             <span style={{ fontSize: 11, padding: '5px 12px', borderRadius: 999, background: 'rgba(27,58,107,0.07)', color: '#1B3A6B', fontWeight: 600 }}>
               {T[lang].common.session}
             </span>
             <span style={{ color: '#94A3B8', fontSize: 13 }}>{admin?.email}</span>
           </div>
         </header>
+
+        {/* KYC banner — shown on all pages except /admin/investors */}
+        {showKycBanner && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 12,
+            padding: '10px 24px',
+            background: 'linear-gradient(90deg, #7F1D1D, #991B1B)',
+            borderBottom: '1px solid #B91C1C',
+            flexShrink: 0,
+          }}>
+            <span style={{ fontSize: 18, flexShrink: 0 }}>🔴</span>
+            <div style={{ flex: 1 }}>
+              <span style={{ color: '#fff', fontSize: 13, fontWeight: 700 }}>
+                {lang === 'fr'
+                  ? `${kycPending} investisseur${kycPending > 1 ? 's' : ''} en attente de validation KYC`
+                  : `${kycPending} investor${kycPending > 1 ? 's' : ''} pending KYC validation`}
+              </span>
+              <span style={{ color: 'rgba(255,255,255,0.65)', fontSize: 12, marginLeft: 8 }}>
+                {lang === 'fr'
+                  ? '— Les souscriptions sont bloquées jusqu\'à validation'
+                  : '— Subscriptions are blocked until validated'}
+              </span>
+            </div>
+            <Link href="/admin/investors?kyc_status=pending"
+              style={{ padding: '6px 14px', borderRadius: 8, background: '#fff', color: '#991B1B', fontSize: 12, fontWeight: 700, textDecoration: 'none', flexShrink: 0 }}>
+              {lang === 'fr' ? 'Valider maintenant →' : 'Validate now →'}
+            </Link>
+            <button
+              onClick={() => setKycDismissed(true)}
+              style={{ background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', fontSize: 14, padding: '4px 8px', flexShrink: 0, lineHeight: 1 }}
+              title={lang === 'fr' ? 'Masquer' : 'Dismiss'}>
+              ✕
+            </button>
+          </div>
+        )}
 
         {/* Content */}
         <main style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
