@@ -64,6 +64,43 @@ function DocImage({ url, label, lang }: { url: string | null; label: string; lan
   );
 }
 
+function LinkAccountForm({ investorId, lang, onLinked }: { investorId: string; lang: string; onLinked: () => void }) {
+  const [uid, setUid] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const link = async () => {
+    if (!uid.trim()) return;
+    setSaving(true);
+    try {
+      const r = await fetch(`/api/admin/investors/${investorId}`, {
+        method:'PUT', headers:{'Content-Type':'application/json'},
+        credentials:'include', body: JSON.stringify({ user_id: uid.trim() }),
+      });
+      const d = await r.json();
+      if (!r.ok) { toast.error(d.error ?? 'Erreur'); }
+      else { toast.success(lang==='fr'?'✅ Compte lié':'✅ Account linked'); onLinked(); }
+    } catch { toast.error(lang==='fr'?'Erreur réseau':'Network error'); }
+    setSaving(false);
+  };
+
+  return (
+    <div style={{ marginTop:12, padding:12, background:'#FFFBEB', borderRadius:10, border:'1px solid #FDE68A' }}>
+      <div style={{ fontSize:12, fontWeight:700, color:'#92400E', marginBottom:8 }}>
+        🔗 {lang==='fr'?'Lier un compte Buam Finance (auth.users UUID)':'Link a Buam Finance account (auth.users UUID)'}
+      </div>
+      <div style={{ display:'flex', gap:8 }}>
+        <input value={uid} onChange={e => setUid(e.target.value)}
+          placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+          style={{ flex:1, padding:'8px 10px', borderRadius:7, border:'1px solid #E2E8F0', fontSize:12, outline:'none', fontFamily:'monospace' }} />
+        <button onClick={link} disabled={saving || !uid.trim()}
+          style={{ padding:'8px 14px', borderRadius:7, border:'none', background:'#1B3A6B', color:'#fff', cursor:'pointer', fontWeight:700, fontSize:12, opacity:saving?0.7:1 }}>
+          {saving?'…':(lang==='fr'?'Lier':'Link')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function InvestorDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -390,12 +427,16 @@ export default function InvestorDetailPage() {
               [lang==='fr'?'Numéro ID':'ID number', inv.id_number||'—'],
               [lang==='fr'?'Inscrit le':'Registered', new Date(inv.created_at).toLocaleDateString(lang==='fr'?'fr-FR':'en-GB')],
               [lang==='fr'?'Statut compte':'Account status', isArchived?(lang==='fr'?'📦 Archivé':'📦 Archived'):(lang==='fr'?'✅ Actif':'✅ Active')],
+              [lang==='fr'?'Compte app lié':'App account linked', inv.user_id?(lang==='fr'?`✅ Lié (${inv.user_id.slice(0,8)}…)`:`✅ Linked (${inv.user_id.slice(0,8)}…)`):(lang==='fr'?'⚠️ Non lié — KYC non accessible depuis l\'app':'⚠️ Not linked — KYC not readable from app')],
             ].map(([l,v]) => (
               <div key={String(l)} style={{ display:'flex', justifyContent:'space-between', padding:'10px 0', borderBottom:'1px solid #F1F5F9' }}>
                 <span style={{ color:'#5A6E8A', fontSize:13 }}>{l}</span>
-                <span style={{ color:'#0F1E35', fontWeight:600, fontSize:13 }}>{v}</span>
+                <span style={{ color: String(v).startsWith('⚠️') ? '#D97706' : '#0F1E35', fontWeight:600, fontSize:13 }}>{v}</span>
               </div>
             ))}
+            {!inv.user_id && (
+              <LinkAccountForm investorId={id} lang={lang} onLinked={() => load()} />
+            )}
             {inv.kyc_rejection_reason && (
               <div style={{ marginTop:12, padding:10, background:'#FEF2F2', borderRadius:8, border:'1px solid #FECACA' }}>
                 <div style={{ fontSize:11, fontWeight:700, color:'#991B1B', marginBottom:2 }}>

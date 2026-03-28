@@ -119,6 +119,10 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       'pic_member', 'pic_fee_paid', 'dia_signed', 'dia_signed_date',
       'risk_profile', 'notes', 'is_active',
       'subscription_start_date', 'subscription_end_date', 'subscription_status',
+      // user_id links the investor row to a Supabase Auth user (needed for mobile app RLS)
+      'user_id',
+      // KYC doc URLs (uploaded by mobile app)
+      'id_front_url', 'id_back_url', 'selfie_url',
     ];
     const update: any = {};
     for (const key of allowed) {

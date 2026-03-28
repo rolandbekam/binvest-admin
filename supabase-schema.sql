@@ -218,6 +218,204 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- ═══════════════════════════════════════════════════════════════
+-- B-INVEST ADMIN — Core Tables (investors, projects, subscriptions…)
+-- Run this BEFORE the Patch section below
+-- ═══════════════════════════════════════════════════════════════
+
+-- ─── INVESTORS ──────────────────────────────────────────────────
+-- user_id links to auth.users so the Buam Finance mobile app can
+-- locate its own KYC record via auth.uid() = user_id
+CREATE TABLE IF NOT EXISTS investors (
+  id                   UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id              UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  full_name            TEXT NOT NULL,
+  email                TEXT UNIQUE NOT NULL,
+  phone                TEXT,
+  country              TEXT DEFAULT 'CM',
+  nationality          TEXT,
+  address              TEXT,
+  id_type              TEXT,
+  id_number            TEXT,
+  -- KYC
+  kyc_status           TEXT NOT NULL DEFAULT 'pending'
+                         CHECK (kyc_status IN ('pending','in_review','approved','rejected')),
+  kyc_notes            TEXT,
+  kyc_rejection_reason TEXT,
+  -- KYC document URLs (uploaded by mobile app to Storage)
+  id_front_url         TEXT,
+  id_back_url          TEXT,
+  selfie_url           TEXT,
+  -- PIC
+  pic_member           BOOLEAN DEFAULT false,
+  pic_fee_paid         BOOLEAN DEFAULT false,
+  pic_joined_at        TIMESTAMPTZ,
+  -- DIA (Direct Investment Account)
+  dia_signed           BOOLEAN DEFAULT false,
+  dia_signed_date      DATE,
+  -- B-Invest subscription
+  subscription_start_date DATE,
+  subscription_end_date   DATE,
+  subscription_status  TEXT DEFAULT 'pending'
+                         CHECK (subscription_status IN ('active','expired','pending')),
+  -- Misc
+  risk_profile         TEXT DEFAULT 'moderate'
+                         CHECK (risk_profile IN ('conservative','moderate','aggressive')),
+  notes                TEXT,
+  is_active            BOOLEAN DEFAULT true,
+  total_invested_ngn   BIGINT DEFAULT 0,
+  created_at           TIMESTAMPTZ DEFAULT NOW(),
+  updated_at           TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_investors_user_id    ON investors(user_id);
+CREATE INDEX IF NOT EXISTS idx_investors_email      ON investors(email);
+CREATE INDEX IF NOT EXISTS idx_investors_kyc_status ON investors(kyc_status);
+
+-- Auto-update updated_at on every row change
+CREATE OR REPLACE FUNCTION set_updated_at()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN NEW.updated_at = NOW(); RETURN NEW; END;
+$$;
+
+DROP TRIGGER IF EXISTS investors_updated_at ON investors;
+CREATE TRIGGER investors_updated_at
+  BEFORE UPDATE ON investors
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- ─── RLS for investors ──────────────────────────────────────────
+ALTER TABLE investors ENABLE ROW LEVEL SECURITY;
+
+-- Mobile app: users can read ONLY their own investor row
+CREATE POLICY IF NOT EXISTS "Investor read own"
+  ON investors FOR SELECT
+  USING (auth.uid() = user_id);
+
+-- Mobile app: users can update a limited subset of their own row
+-- (e.g. to upload KYC doc URLs from the mobile app itself)
+CREATE POLICY IF NOT EXISTS "Investor update own docs"
+  ON investors FOR UPDATE
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+-- Admin panel uses service role key — bypasses RLS, no policy needed.
+-- No INSERT/DELETE policy for regular users.
+
+-- ─── PROJECTS ────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS projects (
+  id                   UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name                 TEXT NOT NULL,
+  type                 TEXT NOT NULL
+                         CHECK (type IN ('land_banking','agriculture_palmier','agriculture_manioc','capital_markets','immobilier')),
+  status               TEXT NOT NULL DEFAULT 'draft'
+                         CHECK (status IN ('draft','open','active','closed','completed')),
+  location             TEXT,
+  horizon_years        INT DEFAULT 1,
+  min_investment_ngn   BIGINT DEFAULT 0,
+  target_amount_ngn    BIGINT DEFAULT 0,
+  max_amount_ngn       BIGINT,
+  yield_min_pct        NUMERIC(5,2),
+  yield_max_pct        NUMERIC(5,2),
+  fee_facilitation_pct NUMERIC(5,2) DEFAULT 10,
+  fee_management_pct   NUMERIC(5,2) DEFAULT 3,
+  fee_resale_pct       NUMERIC(5,2),
+  tranches_count       INT DEFAULT 1,
+  spots_total          INT,
+  spots_taken          INT DEFAULT 0,
+  deadline             DATE,
+  visible_in_app       BOOLEAN DEFAULT false,
+  allows_pic           BOOLEAN DEFAULT true,
+  description          TEXT,
+  highlights           TEXT[],
+  created_at           TIMESTAMPTZ DEFAULT NOW(),
+  updated_at           TIMESTAMPTZ DEFAULT NOW()
+);
+
+DROP TRIGGER IF EXISTS projects_updated_at ON projects;
+CREATE TRIGGER projects_updated_at
+  BEFORE UPDATE ON projects
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- Mobile app: anyone authenticated can read open/active projects
+ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
+CREATE POLICY IF NOT EXISTS "Projects readable by all"
+  ON projects FOR SELECT
+  USING (auth.role() = 'authenticated' AND status IN ('open','active'));
+
+-- ─── SUBSCRIPTIONS ───────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS subscriptions (
+  id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  investor_id     UUID NOT NULL REFERENCES investors(id) ON DELETE CASCADE,
+  project_id      UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  amount_ngn      BIGINT NOT NULL,
+  fee_ngn         BIGINT NOT NULL DEFAULT 0,
+  total_amount_ngn BIGINT NOT NULL,
+  tranches_count  INT NOT NULL DEFAULT 1,
+  dia_reference   TEXT UNIQUE,
+  status          TEXT NOT NULL DEFAULT 'pending'
+                    CHECK (status IN ('pending','active','completed','cancelled')),
+  created_at      TIMESTAMPTZ DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+DROP TRIGGER IF EXISTS subscriptions_updated_at ON subscriptions;
+CREATE TRIGGER subscriptions_updated_at
+  BEFORE UPDATE ON subscriptions
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+ALTER TABLE subscriptions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY IF NOT EXISTS "Subscription read own"
+  ON subscriptions FOR SELECT
+  USING (investor_id IN (SELECT id FROM investors WHERE user_id = auth.uid()));
+
+-- ─── PAYMENT TRANCHES ────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS payment_tranches (
+  id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  subscription_id     UUID NOT NULL REFERENCES subscriptions(id) ON DELETE CASCADE,
+  tranche_number      INT NOT NULL,
+  amount_ngn          BIGINT NOT NULL,
+  status              TEXT NOT NULL DEFAULT 'pending'
+                        CHECK (status IN ('pending','received','late','waived')),
+  received_amount_ngn BIGINT,
+  received_date       DATE,
+  due_date            DATE,
+  payment_method      TEXT,
+  bank_reference      TEXT,
+  notes               TEXT,
+  created_at          TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE payment_tranches ENABLE ROW LEVEL SECURITY;
+CREATE POLICY IF NOT EXISTS "Tranche read own"
+  ON payment_tranches FOR SELECT
+  USING (subscription_id IN (
+    SELECT s.id FROM subscriptions s
+    JOIN investors i ON i.id = s.investor_id
+    WHERE i.user_id = auth.uid()
+  ));
+
+-- ─── AUDIT LOGS ──────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  admin_id      UUID,
+  admin_email   TEXT NOT NULL DEFAULT 'system',
+  action        TEXT NOT NULL,
+  resource_type TEXT,
+  resource_id   TEXT,
+  old_values    JSONB,
+  new_values    JSONB,
+  ip_address    TEXT,
+  user_agent    TEXT,
+  severity      TEXT DEFAULT 'info'
+                  CHECK (severity IN ('info','warning','critical')),
+  created_at    TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_logs_action   ON audit_logs(action);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_resource ON audit_logs(resource_type, resource_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created  ON audit_logs(created_at DESC);
+-- Audit logs: no RLS — service role only (admin panel)
+
+-- ═══════════════════════════════════════════════════════════════
 -- B-INVEST ADMIN — PIC Groups & Investor Subscriptions (Patch)
 -- Run after the initial schema
 -- ═══════════════════════════════════════════════════════════════

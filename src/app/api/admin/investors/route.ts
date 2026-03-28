@@ -51,6 +51,8 @@ export async function POST(request: NextRequest) {
         pic_member: body.pic_member ?? false,
         dia_signed: body.dia_signed ?? false,
         notes: body.notes ?? null,
+        // user_id links this investor to a Supabase Auth user (enables mobile app RLS)
+        user_id: body.user_id ?? null,
       })
       .select()
       .single();
