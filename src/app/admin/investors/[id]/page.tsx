@@ -70,7 +70,8 @@ export default function InvestorDetailPage() {
   const [lang, setL] = useState<Lang>('fr');
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<'profil'|'kyc'|'projets'|'paiements'|'notes'>('profil');
+  const [tab, setTab] = useState<'profil'|'kyc'|'projets'|'paiements'|'notes'|'abonnement'>('profil');
+  const [updatingSub, setUpdatingSub] = useState(false);
   const [editKyc, setEditKyc] = useState('');
   const [rejectionReason, setRejectionReason] = useState('');
   const [showRejectBox, setShowRejectBox] = useState(false);
@@ -169,6 +170,32 @@ export default function InvestorDetailPage() {
     setSendingEmail(false);
   };
 
+  const updateSubscription = async (action: 'activate' | 'renew') => {
+    const startDate = new Date().toISOString().slice(0, 10);
+    const endDate = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const body: any = { subscription_status: 'active', subscription_start_date: startDate, subscription_end_date: endDate };
+    if (action === 'renew' && data?.investor?.subscription_end_date) {
+      const current = new Date(data.investor.subscription_end_date);
+      const extended = new Date(current.getTime() + 365 * 24 * 60 * 60 * 1000);
+      body.subscription_end_date = extended.toISOString().slice(0, 10);
+      body.subscription_start_date = data.investor.subscription_start_date;
+    }
+    setUpdatingSub(true);
+    try {
+      const r = await fetch(`/api/admin/investors/${id}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        credentials: 'include', body: JSON.stringify(body),
+      });
+      const d = await r.json();
+      if (!r.ok) { toast.error(d.error ?? 'Erreur'); }
+      else toast.success(action === 'activate'
+        ? (lang === 'fr' ? '✅ Abonnement activé (365 jours)' : '✅ Subscription activated (365 days)')
+        : (lang === 'fr' ? '✅ Abonnement renouvelé (+365 jours)' : '✅ Subscription renewed (+365 days)'));
+      load();
+    } catch { toast.error(lang === 'fr' ? 'Erreur réseau' : 'Network error'); }
+    setUpdatingSub(false);
+  };
+
   const openDIAPDF = (tranche: any, sub: any) => {
     const params = new URLSearchParams({
       reference: sub.dia_reference,
@@ -213,12 +240,19 @@ export default function InvestorDetailPage() {
   const totalLate = tranches.filter((t:any) => t.status==='late').reduce((s:number,t:any) => s+t.amount_ngn, 0);
   const initials = inv.full_name?.split(' ').map((n:string) => n[0]).join('').slice(0,2).toUpperCase() ?? '??';
 
+  const subStatus = inv.subscription_status ?? 'pending';
+  const subStatusEmoji = subStatus === 'active' ? '🟢' : subStatus === 'expired' ? '🔴' : '🟡';
+  const daysLeft = inv.subscription_end_date
+    ? Math.ceil((new Date(inv.subscription_end_date).getTime() - Date.now()) / 86400000)
+    : null;
+
   const TABS = [
-    { key:'profil',    label:`👤 ${lang==='fr'?'Profil':'Profile'}` },
-    { key:'kyc',       label:`🪪 KYC ${inv.kyc_status === 'pending' ? '🔴' : inv.kyc_status === 'in_review' ? '🟡' : inv.kyc_status === 'approved' ? '🟢' : '⚫'}` },
-    { key:'projets',   label:`📋 ${lang==='fr'?'Projets':'Projects'} (${subs.length})` },
-    { key:'paiements', label:`💰 ${lang==='fr'?'Paiements':'Payments'} (${tranches.length})` },
-    { key:'notes',     label:`📝 ${lang==='fr'?'Notes':'Notes'}` },
+    { key:'profil',      label:`👤 ${lang==='fr'?'Profil':'Profile'}` },
+    { key:'abonnement',  label:`💳 ${lang==='fr'?'Abonnement':'Subscription'} ${subStatusEmoji}` },
+    { key:'kyc',         label:`🪪 KYC ${inv.kyc_status === 'pending' ? '🔴' : inv.kyc_status === 'in_review' ? '🟡' : inv.kyc_status === 'approved' ? '🟢' : '⚫'}` },
+    { key:'projets',     label:`📋 ${lang==='fr'?'Projets':'Projects'} (${subs.length})` },
+    { key:'paiements',   label:`💰 ${lang==='fr'?'Paiements':'Payments'} (${tranches.length})` },
+    { key:'notes',       label:`📝 ${lang==='fr'?'Notes':'Notes'}` },
   ];
 
   return (
@@ -613,6 +647,124 @@ export default function InvestorDetailPage() {
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* ── ABONNEMENT ── */}
+      {tab === 'abonnement' && (
+        <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
+          {/* Status banner */}
+          <div style={{ padding:'20px 24px', borderRadius:14, border:`2px solid ${subStatus==='active'?'#16a34a':subStatus==='expired'?'#E63946':'#D97706'}40`,
+            background: subStatus==='active'?'#F0FDF4':subStatus==='expired'?'#FEF2F2':'#FFFBEB',
+            display:'flex', alignItems:'center', gap:16 }}>
+            <div style={{ fontSize:40 }}>
+              {subStatus==='active'?'✅':subStatus==='expired'?'❌':'⏳'}
+            </div>
+            <div style={{ flex:1 }}>
+              <div style={{ fontFamily:'Syne,sans-serif', fontWeight:800, fontSize:18,
+                color: subStatus==='active'?'#166534':subStatus==='expired'?'#991B1B':'#92400E' }}>
+                {subStatus==='active'
+                  ? (lang==='fr'?'Abonnement actif':'Active subscription')
+                  : subStatus==='expired'
+                  ? (lang==='fr'?'Abonnement expiré — accès suspendu':'Expired subscription — access suspended')
+                  : (lang==='fr'?'Abonnement non activé':'Subscription not activated')}
+              </div>
+              <div style={{ fontSize:13, color:'#5A6E8A', marginTop:4 }}>
+                {lang==='fr'?'Cotisation annuelle :':'Annual fee:'} <strong>50 000 FCFA</strong>
+                {subStatus==='active' && daysLeft !== null && (
+                  <span style={{ marginLeft:12, fontWeight:700, color: daysLeft<=30?'#E63946':daysLeft<=60?'#D97706':'#16a34a' }}>
+                    · {daysLeft} {t.investors.sub_days_left}
+                  </span>
+                )}
+              </div>
+            </div>
+            <div style={{ display:'flex', gap:10, flexShrink:0 }}>
+              {subStatus !== 'active' && (
+                <button onClick={() => updateSubscription('activate')} disabled={updatingSub}
+                  style={{ padding:'10px 18px', borderRadius:9, border:'none', background:'#16a34a', color:'#fff', cursor:'pointer', fontWeight:700, fontSize:13, opacity:updatingSub?0.7:1 }}>
+                  {updatingSub ? '…' : t.investors.sub_activate}
+                </button>
+              )}
+              {subStatus === 'active' && (
+                <button onClick={() => updateSubscription('renew')} disabled={updatingSub}
+                  style={{ padding:'10px 18px', borderRadius:9, border:'1px solid #1B3A6B', background:'rgba(27,58,107,0.06)', color:'#1B3A6B', cursor:'pointer', fontWeight:700, fontSize:13, opacity:updatingSub?0.7:1 }}>
+                  {updatingSub ? '…' : t.investors.sub_renew}
+                </button>
+              )}
+              {subStatus === 'expired' && (
+                <button onClick={() => updateSubscription('activate')} disabled={updatingSub}
+                  style={{ padding:'10px 18px', borderRadius:9, border:'none', background:'#1B3A6B', color:'#fff', cursor:'pointer', fontWeight:700, fontSize:13, opacity:updatingSub?0.7:1 }}>
+                  {updatingSub ? '…' : lang==='fr'?'♻️ Renouveler':'♻️ Renew'}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Dates & details */}
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20 }}>
+            <div style={{ background:'#fff', borderRadius:16, border:'1px solid #E2E8F0', padding:24 }}>
+              <h3 style={{ fontFamily:'Syne,sans-serif', fontWeight:700, marginBottom:16, color:'#0F1E35' }}>
+                📅 {lang==='fr'?'Dates d\'abonnement':'Subscription Dates'}
+              </h3>
+              {[
+                [t.investors.sub_status, subStatus==='active'?t.investors.sub_active:subStatus==='expired'?t.investors.sub_expired:t.investors.sub_pending],
+                [t.investors.sub_start, inv.subscription_start_date ? new Date(inv.subscription_start_date).toLocaleDateString(lang==='fr'?'fr-FR':'en-GB') : '—'],
+                [t.investors.sub_end, inv.subscription_end_date ? new Date(inv.subscription_end_date).toLocaleDateString(lang==='fr'?'fr-FR':'en-GB') : '—'],
+                [lang==='fr'?'Jours restants':'Days remaining', subStatus==='active' && daysLeft !== null ? `${daysLeft} ${lang==='fr'?'jours':'days'}` : '—'],
+              ].map(([l,v]) => (
+                <div key={String(l)} style={{ display:'flex', justifyContent:'space-between', padding:'10px 0', borderBottom:'1px solid #F1F5F9' }}>
+                  <span style={{ color:'#5A6E8A', fontSize:13 }}>{l}</span>
+                  <span style={{ color:'#0F1E35', fontWeight:600, fontSize:13 }}>{v}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ background:'#fff', borderRadius:16, border:'1px solid #E2E8F0', padding:24 }}>
+              <h3 style={{ fontFamily:'Syne,sans-serif', fontWeight:700, marginBottom:16, color:'#0F1E35' }}>
+                ℹ️ {lang==='fr'?'Conditions d\'accès':'Access Conditions'}
+              </h3>
+              {[
+                [lang==='fr'?'Frais annuels':'Annual fee', '50 000 FCFA'],
+                [lang==='fr'?'Durée':'Duration', lang==='fr'?'365 jours à partir de l\'activation':'365 days from activation'],
+                ['KYC', inv.kyc_status==='approved'?(lang==='fr'?'✅ Approuvé':'✅ Approved'):(lang==='fr'?'⚠️ Requis pour investir':'⚠️ Required to invest')],
+                [lang==='fr'?'Accès projets':'Project access', subStatus==='active'?(lang==='fr'?'✅ Actif':'✅ Active'):(lang==='fr'?'❌ Suspendu':'❌ Suspended')],
+                [lang==='fr'?'Notifications projets':'Project notifications', subStatus!=='pending'?(lang==='fr'?'✅ Actives (même à expiration)':'✅ Active (even on expiry)'):'—'],
+              ].map(([l,v]) => (
+                <div key={String(l)} style={{ display:'flex', justifyContent:'space-between', padding:'10px 0', borderBottom:'1px solid #F1F5F9' }}>
+                  <span style={{ color:'#5A6E8A', fontSize:13 }}>{l}</span>
+                  <span style={{ color:'#0F1E35', fontWeight:600, fontSize:13 }}>{v}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Reminder schedule */}
+          {subStatus === 'active' && inv.subscription_end_date && (
+            <div style={{ background:'#fff', borderRadius:16, border:'1px solid #E2E8F0', padding:24 }}>
+              <h3 style={{ fontFamily:'Syne,sans-serif', fontWeight:700, marginBottom:12, color:'#0F1E35' }}>
+                📧 {lang==='fr'?'Rappels automatiques programmés':'Scheduled Automatic Reminders'}
+              </h3>
+              <div style={{ display:'flex', gap:12, flexWrap:'wrap' }}>
+                {[60, 30, 14, 7].map(d => {
+                  const reminderDate = new Date(new Date(inv.subscription_end_date).getTime() - d * 86400000);
+                  const isPast = reminderDate < new Date();
+                  return (
+                    <div key={d} style={{ flex:1, minWidth:120, padding:'12px 16px', borderRadius:10, border:'1px solid',
+                      borderColor: isPast?'#CBD5E1':'#C9963A',
+                      background: isPast?'#F8FAFC':'#FFFBEB' }}>
+                      <div style={{ fontSize:18, marginBottom:4 }}>{isPast?'✅':'⏰'}</div>
+                      <div style={{ fontWeight:700, fontSize:13, color: isPast?'#94A3B8':'#92400E' }}>J-{d}</div>
+                      <div style={{ fontSize:11, color:'#94A3B8', marginTop:2 }}>
+                        {reminderDate.toLocaleDateString(lang==='fr'?'fr-FR':'en-GB')}
+                      </div>
+                      <div style={{ fontSize:11, color: isPast?'#94A3B8':'#5A6E8A', marginTop:2 }}>
+                        {isPast?(lang==='fr'?'Envoyé':'Sent'):(lang==='fr'?'Programmé':'Scheduled')}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

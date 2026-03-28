@@ -118,6 +118,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       'id_type', 'id_number', 'kyc_status', 'kyc_notes', 'kyc_rejection_reason',
       'pic_member', 'pic_fee_paid', 'dia_signed', 'dia_signed_date',
       'risk_profile', 'notes', 'is_active',
+      'subscription_start_date', 'subscription_end_date', 'subscription_status',
     ];
     const update: any = {};
     for (const key of allowed) {
