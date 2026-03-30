@@ -18,7 +18,7 @@ const RecordPaymentSchema = z.object({
   notes: z.string().optional(),
 });
 
-// ── GET — Liste des tranches ─────────────────────────────────────
+// ── GET — Unified payment list (all types) ───────────────────────
 export async function GET(request: NextRequest) {
   const admin = getAdminFromHeaders(request.headers);
   if (!admin.id) return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
@@ -28,36 +28,43 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
     const subscriptionId = searchParams.get('subscription_id');
+    const paymentType = searchParams.get('payment_type'); // 'project_tranche'|'investor_fee'|'pic_fee'
 
-    let query = supabase
-      .from('payment_tranches')
-      .select(`
-        *,
-        subscription:subscriptions(
-          id, dia_reference, amount_ngn, total_amount_ngn,
-          investor:investors(id, full_name, email, country),
-          project:projects(id, name, type)
-        )
-      `)
-      .order('due_date', { ascending: true });
+    // ── Type A: project tranches ─────────────────────────────────
+    let tranches: any[] = [];
+    if (!paymentType || paymentType === 'project_tranche') {
+      let q = supabase
+        .from('payment_tranches')
+        .select(`*, subscription:subscriptions(id, dia_reference, amount_ngn, total_amount_ngn, investor:investors(id, full_name, email, country), project:projects(id, name, type))`)
+        .order('due_date', { ascending: true });
+      if (status) q = q.eq('status', status);
+      if (subscriptionId) q = q.eq('subscription_id', subscriptionId);
+      const { data } = await q;
+      tranches = (data ?? []).map(t => ({ ...t, payment_type: 'project_tranche' }));
+    }
 
-    if (status) query = query.eq('status', status);
-    if (subscriptionId) query = query.eq('subscription_id', subscriptionId);
+    // ── Types B & C: fee payments ─────────────────────────────────
+    let feePayments: any[] = [];
+    if (!paymentType || paymentType === 'investor_fee' || paymentType === 'pic_fee') {
+      let q2 = supabase
+        .from('investor_subscriptions')
+        .select(`*, investor:investors(id, full_name, email, country), pic:pics(id, name)`)
+        .order('created_at', { ascending: false });
+      if (paymentType && paymentType !== 'project_tranche') q2 = q2.eq('type', paymentType);
+      const { data: feeData, error: feeErr } = await q2;
+      if (!feeErr) feePayments = feeData ?? [];
+    }
 
-    const { data, error } = await query;
-    if (error) throw error;
-
-    // Calcul statistiques
     const stats = {
-      total_pending: data?.filter(t => t.status === 'pending').reduce((s, t) => s + t.amount_ngn, 0) ?? 0,
-      total_received: data?.filter(t => t.status === 'received').reduce((s, t) => s + (t.received_amount_ngn ?? 0), 0) ?? 0,
-      total_late: data?.filter(t => t.status === 'late').reduce((s, t) => s + t.amount_ngn, 0) ?? 0,
-      count_pending: data?.filter(t => t.status === 'pending').length ?? 0,
-      count_late: data?.filter(t => t.status === 'late').length ?? 0,
+      total_pending:  tranches.filter(t => t.status === 'pending').reduce((s, t) => s + t.amount_ngn, 0),
+      total_received: tranches.filter(t => t.status === 'received').reduce((s, t) => s + (t.received_amount_ngn ?? 0), 0),
+      total_late:     tranches.filter(t => t.status === 'late').reduce((s, t) => s + t.amount_ngn, 0),
+      count_pending:  tranches.filter(t => t.status === 'pending').length,
+      count_late:     tranches.filter(t => t.status === 'late').length,
+      total_fees_xaf: feePayments.reduce((s, f) => s + (f.amount_xaf ?? 0), 0),
     };
 
-    return NextResponse.json({ tranches: data, stats });
-
+    return NextResponse.json({ tranches, feePayments, stats });
   } catch (err) {
     console.error('[PAYMENTS GET]', err);
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 });
