@@ -12,13 +12,18 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search');
     const kyc = searchParams.get('kyc_status');
 
+    // Minimal select — no joins to avoid failures if dependent tables are missing
     let query = supabase
       .from('investors')
-      .select('*, subscriptions(id, amount_ngn, status, project:projects(name))')
+      .select('id, full_name, email, phone, country, kyc_status, subscription_status, subscription_end_date, pic_member, dia_signed, is_active, created_at')
       .order('created_at', { ascending: false });
 
     if (kyc) query = query.eq('kyc_status', kyc);
-    if (search) query = query.or(`full_name.ilike.%${search}%,email.ilike.%${search}%`);
+    if (search) {
+      // Escape % and _ to prevent accidental wildcard injection
+      const safe = search.replace(/%/g, '\\%').replace(/_/g, '\\_');
+      query = query.or(`full_name.ilike.%${safe}%,email.ilike.%${safe}%`);
+    }
 
     const { data, error } = await query;
     if (error) throw error;

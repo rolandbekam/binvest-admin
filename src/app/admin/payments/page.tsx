@@ -19,7 +19,8 @@ const TRANCHE_STYLE: Record<string,{bg:string;text:string;fr:string;en:string}> 
 const TYPE_META = {
   project_tranche: { icon:'🏗️', bg:'#EFF6FF', text:'#1E40AF', fr:'Tranche projet', en:'Project instalment' },
   investor_fee:    { icon:'📋', bg:'#F0FDF4', text:'#166534', fr:'Inscription annuelle', en:'Annual subscription' },
-  pic_fee:         { icon:'🏛️', bg:'#FEF9C3', text:'#854D0E', fr:'Adhésion PIC', en:'PIC membership' },
+  pic_fee:         { icon:'🏛️', bg:'#FEF9C3', text:'#854D0E', fr:'Membre PIC', en:'PIC member' },
+  pic_join:        { icon:'🏛️', bg:'#F0FDF4', text:'#166534', fr:'Rejoindre un PIC', en:'Join a PIC' },
 };
 const METHOD_LABELS: Record<string,string> = {
   bank_transfer:'🏦 Virement', mobile_money:'📱 Mobile Money', cash:'💵 Cash', crypto:'₿ Crypto',
@@ -61,7 +62,7 @@ export default function PaymentsPage() {
   // ── modal state ────────────────────────────────────────────────
   const [showModal, setShowModal] = useState(false);
   const [step, setStep] = useState(1);                    // 1=investor 2=type 3=detail 4=confirm
-  const [payType, setPayType] = useState<'project_tranche'|'investor_fee'|'pic_fee'|''>('');
+  const [payType, setPayType] = useState<'project_tranche'|'investor_fee'|'pic_join'|''>('');
 
   // investor search
   const [investorSearch, setInvestorSearch] = useState('');
@@ -147,14 +148,11 @@ export default function PaymentsPage() {
 
   // ── save payment ───────────────────────────────────────────────
   const savePayment = async () => {
-    if (!form.payment_date || !form.payment_method) {
-      toast.error(lang==='fr'?'Date et méthode obligatoires':'Date and method required');
-      return;
-    }
     setSaving(true);
     try {
       if (payType === 'project_tranche') {
         if (!selectedTranche || !form.amount) { toast.error(lang==='fr'?'Tranche et montant requis':'Tranche and amount required'); setSaving(false); return; }
+        if (!form.payment_date || !form.payment_method) { toast.error(lang==='fr'?'Date et méthode obligatoires':'Date and method required'); setSaving(false); return; }
         const r = await fetch('/api/admin/payments', {
           method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include',
           body: JSON.stringify({
@@ -162,7 +160,6 @@ export default function PaymentsPage() {
             tranche_number: selectedTranche.tranche_number,
             received_amount_ngn: Number(form.amount),
             received_date: form.payment_date,
-            received_currency: 'NGN',
             payment_method: form.payment_method,
             bank_reference: form.bank_reference,
             notes: form.notes,
@@ -171,27 +168,33 @@ export default function PaymentsPage() {
         const d = await r.json();
         if (!r.ok) { toast.error(d.error ?? 'Erreur'); setSaving(false); return; }
         toast.success(lang==='fr'?'✅ Tranche enregistrée !':'✅ Instalment recorded!');
-      } else {
-        // Type B or C
+      } else if (payType === 'pic_join') {
+        // Free PIC join — no payment, just add the member
+        if (!selectedPic) { toast.error(lang==='fr'?'Sélectionnez un PIC':'Select a PIC'); setSaving(false); return; }
+        const r = await fetch(`/api/admin/pic/${selectedPic.id}`, {
+          method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include',
+          body: JSON.stringify({ investor_id: selectedInvestor.id }),
+        });
+        const d = await r.json();
+        if (!r.ok) { toast.error(d.error ?? 'Erreur'); setSaving(false); return; }
+        toast.success(lang==='fr'?`✅ Membre ajouté au PIC ${selectedPic.name}`:`✅ Member added to PIC ${selectedPic.name}`);
+      } else if (payType === 'investor_fee') {
+        if (!form.payment_date || !form.payment_method) { toast.error(lang==='fr'?'Date et méthode obligatoires':'Date and method required'); setSaving(false); return; }
         const r = await fetch('/api/admin/investor-subscriptions', {
           method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include',
           body: JSON.stringify({
             investor_id: selectedInvestor.id,
-            type: payType,
+            type: 'investor_fee',
             payment_date: form.payment_date,
             payment_method: form.payment_method,
             bank_reference: form.bank_reference,
             notes: form.notes,
             amount_xaf: 50000,
-            ...(payType === 'pic_fee' ? { pic_id: selectedPic?.id } : {}),
           }),
         });
         const d = await r.json();
         if (!r.ok) { toast.error(d.error ?? 'Erreur'); setSaving(false); return; }
-        const msg = payType === 'investor_fee'
-          ? (lang==='fr'?`✅ Abonnement enregistré — valable jusqu'au ${fmtDate(d.end_date, lang)}`:`✅ Subscription recorded — valid until ${fmtDate(d.end_date, lang)}`)
-          : (lang==='fr'?`✅ Adhésion PIC enregistrée — ${d.pic_name}`:`✅ PIC membership recorded — ${d.pic_name}`);
-        toast.success(msg);
+        toast.success(lang==='fr'?`✅ Abonnement enregistré — valable jusqu'au ${fmtDate(d.end_date, lang)}`:`✅ Subscription recorded — valid until ${fmtDate(d.end_date, lang)}`);
       }
       closeModal();
       load();
@@ -356,7 +359,7 @@ export default function PaymentsPage() {
         </div>
         {/* Type filter */}
         <div style={{ display:'flex', gap:5 }}>
-          {(['','project_tranche','investor_fee','pic_fee'] as const).map(tp=>{
+          {(['','project_tranche','investor_fee'] as const).map(tp=>{
             const meta = tp ? TYPE_META[tp] : null;
             return (
               <button key={tp} onClick={()=>setFilterType(tp)}
@@ -551,53 +554,68 @@ export default function PaymentsPage() {
                   {lang==='fr'?'Choisissez le type de paiement :':'Choose the payment type:'}
                 </div>
                 <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-                  {/* Type A */}
-                  <div onClick={()=>{setPayType('project_tranche');setStep(3);}}
-                    style={{ padding:'16px 18px', borderRadius:12, border:`2px solid ${payType==='project_tranche'?'#1B3A6B':'#E2E8F0'}`, cursor:'pointer', background:payType==='project_tranche'?'rgba(27,58,107,0.04)':'#fff' }}>
-                    <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-                      <span style={{ fontSize:24 }}>🏗️</span>
-                      <div>
-                        <div style={{ fontWeight:700, fontSize:14, color:'#0F1E35' }}>
-                          {lang==='fr'?'Tranche de projet d\'investissement':'Investment project instalment'}
-                        </div>
-                        <div style={{ fontSize:12, color:'#5A6E8A', marginTop:2 }}>
-                          {lang==='fr'?`${investorSubs.length} souscription(s) active(s)`:`${investorSubs.length} active subscription(s)`}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  {/* Type B */}
-                  <div onClick={()=>{setPayType('investor_fee');setStep(3);}}
-                    style={{ padding:'16px 18px', borderRadius:12, border:`2px solid ${payType==='investor_fee'?'#16a34a':'#E2E8F0'}`, cursor:'pointer', background:payType==='investor_fee'?'#F0FDF4':'#fff' }}>
-                    <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-                      <span style={{ fontSize:24 }}>📋</span>
-                      <div>
-                        <div style={{ fontWeight:700, fontSize:14, color:'#0F1E35' }}>
-                          {lang==='fr'?'Inscription investisseur (50 000 XAF/an)':'Investor subscription (50,000 XAF/year)'}
-                        </div>
-                        <div style={{ fontSize:12, color:'#5A6E8A', marginTop:2 }}>
-                          {selectedInvestor.subscription_status === 'active'
-                            ? (lang==='fr'?'✅ Renouvellement — extension de 365 jours':'✅ Renewal — extends by 365 days')
-                            : (lang==='fr'?'⏳ Nouvelle activation (365 jours)':'⏳ New activation (365 days)')}
+                  {/* If NOT active: only show investor fee */}
+                  {selectedInvestor.subscription_status !== 'active' && (
+                    <div onClick={()=>{setPayType('investor_fee');setStep(3);}}
+                      style={{ padding:'16px 18px', borderRadius:12, border:`2px solid ${payType==='investor_fee'?'#16a34a':'#E2E8F0'}`, cursor:'pointer', background:payType==='investor_fee'?'#F0FDF4':'#fff' }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+                        <span style={{ fontSize:24 }}>💳</span>
+                        <div>
+                          <div style={{ fontWeight:700, fontSize:14, color:'#0F1E35' }}>
+                            {lang==='fr'?'Frais investisseur — 50 000 XAF/an':'Investor fee — 50,000 XAF/year'}
+                          </div>
+                          <div style={{ fontSize:12, color:'#5A6E8A', marginTop:2 }}>
+                            {lang==='fr'?'⏳ Activation abonnement (365 jours)':'⏳ Subscription activation (365 days)'}
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                  {/* Type C */}
-                  <div onClick={()=>{setPayType('pic_fee');setStep(3);}}
-                    style={{ padding:'16px 18px', borderRadius:12, border:`2px solid ${payType==='pic_fee'?'#C9963A':'#E2E8F0'}`, cursor:'pointer', background:payType==='pic_fee'?'#FFFBEB':'#fff' }}>
-                    <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-                      <span style={{ fontSize:24 }}>🏛️</span>
-                      <div>
-                        <div style={{ fontWeight:700, fontSize:14, color:'#0F1E35' }}>
-                          {lang==='fr'?'Adhésion PIC (50 000 XAF)':'PIC Membership (50,000 XAF)'}
-                        </div>
-                        <div style={{ fontSize:12, color:'#5A6E8A', marginTop:2 }}>
-                          {lang==='fr'?`${pics.length} cercle(s) PIC disponible(s)`:`${pics.length} PIC circle(s) available`}
+                  )}
+                  {/* If active: show tranche + free PIC join */}
+                  {selectedInvestor.subscription_status === 'active' && (<>
+                    <div onClick={()=>{setPayType('project_tranche');setStep(3);}}
+                      style={{ padding:'16px 18px', borderRadius:12, border:`2px solid ${payType==='project_tranche'?'#1B3A6B':'#E2E8F0'}`, cursor:'pointer', background:payType==='project_tranche'?'rgba(27,58,107,0.04)':'#fff' }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+                        <span style={{ fontSize:24 }}>🏗️</span>
+                        <div>
+                          <div style={{ fontWeight:700, fontSize:14, color:'#0F1E35' }}>
+                            {lang==='fr'?'Tranche de projet d\'investissement':'Investment project instalment'}
+                          </div>
+                          <div style={{ fontSize:12, color:'#5A6E8A', marginTop:2 }}>
+                            {lang==='fr'?`${investorSubs.length} souscription(s)`:`${investorSubs.length} subscription(s)`}
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
+                    <div onClick={()=>{setPayType('pic_join');setStep(3);}}
+                      style={{ padding:'16px 18px', borderRadius:12, border:`2px solid ${payType==='pic_join'?'#16a34a':'#E2E8F0'}`, cursor:'pointer', background:payType==='pic_join'?'#F0FDF4':'#fff' }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+                        <span style={{ fontSize:24 }}>🏛️</span>
+                        <div>
+                          <div style={{ fontWeight:700, fontSize:14, color:'#0F1E35' }}>
+                            {lang==='fr'?'Rejoindre un PIC (GRATUIT)':'Join a PIC (FREE)'}
+                          </div>
+                          <div style={{ fontSize:12, color:'#166534', marginTop:2 }}>
+                            {lang==='fr'?`${pics.length} cercle(s) disponible(s) · Réservé aux investisseurs actifs`:`${pics.length} circle(s) available · Active investors only`}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div onClick={()=>{setPayType('investor_fee');setStep(3);}}
+                      style={{ padding:'16px 18px', borderRadius:12, border:`2px solid ${payType==='investor_fee'?'#16a34a':'#E2E8F0'}`, cursor:'pointer', background:payType==='investor_fee'?'#F0FDF4':'#fff' }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+                        <span style={{ fontSize:24 }}>💳</span>
+                        <div>
+                          <div style={{ fontWeight:700, fontSize:14, color:'#0F1E35' }}>
+                            {lang==='fr'?'Renouveler l\'abonnement — 50 000 XAF/an':'Renew subscription — 50,000 XAF/year'}
+                          </div>
+                          <div style={{ fontSize:12, color:'#5A6E8A', marginTop:2 }}>
+                            {lang==='fr'?'✅ Extension de 365 jours':'✅ Extends by 365 days'}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </>)}
                 </div>
               </div>
             )}
@@ -649,28 +667,28 @@ export default function PaymentsPage() {
                     </div>
                   )}
 
-                  {/* Type C: PIC selector */}
-                  {payType === 'pic_fee' && (
+                  {/* pic_join: PIC selector */}
+                  {payType === 'pic_join' && (
                     <div style={{ marginTop:8 }}>
                       <div style={{ fontSize:12, color:'#374151', marginBottom:6 }}>{lang==='fr'?'Sélectionnez le PIC :':'Select the PIC:'}</div>
                       {pics.length === 0 ? (
                         <div style={{ color:'#94A3B8', fontSize:12 }}>{lang==='fr'?'Aucun PIC disponible (tous complets ou fermés)':'No PIC available (all full or closed)'}</div>
                       ) : pics.map((p:any)=>(
                         <div key={p.id} onClick={()=>setSelectedPic(p)}
-                          style={{ padding:'8px 12px', borderRadius:8, border:`2px solid ${selectedPic?.id===p.id?'#C9963A':'#E2E8F0'}`, marginBottom:6, cursor:'pointer', background:selectedPic?.id===p.id?'#FFFBEB':'#fff', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                          style={{ padding:'8px 12px', borderRadius:8, border:`2px solid ${selectedPic?.id===p.id?'#16a34a':'#E2E8F0'}`, marginBottom:6, cursor:'pointer', background:selectedPic?.id===p.id?'#F0FDF4':'#fff', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
                           <div>
                             <div style={{ fontWeight:700, fontSize:13 }}>🏛️ {p.name}</div>
-                            <div style={{ fontSize:11, color:'#94A3B8' }}>{p.member_count}/{p.max_members} membres · {p.spots_remaining} {lang==='fr'?'places':'spots'}</div>
+                            <div style={{ fontSize:11, color:'#94A3B8' }}>{p.member_count ?? '?'}/{p.max_members} membres · {p.spots_remaining ?? '?'} {lang==='fr'?'places':'spots'}</div>
                           </div>
-                          {selectedPic?.id===p.id && <span style={{ color:'#C9963A', fontWeight:700 }}>✓</span>}
+                          {selectedPic?.id===p.id && <span style={{ color:'#16a34a', fontWeight:700 }}>✓</span>}
                         </div>
                       ))}
                     </div>
                   )}
                 </div>
 
-                {/* Payment form */}
-                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+                {/* Payment form — NOT shown for pic_join (it's free) */}
+                <div style={{ display: payType === 'pic_join' ? 'none' : 'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
                   {payType === 'project_tranche' && (
                     <div>
                       <label style={{ fontSize:12, fontWeight:600, color:'#374151', display:'block', marginBottom:5 }}>
@@ -735,7 +753,7 @@ export default function PaymentsPage() {
               {step === 3 && (
                 <button onClick={savePayment} disabled={saving ||
                   (payType==='project_tranche' && !selectedTranche) ||
-                  (payType==='pic_fee' && !selectedPic)}
+                  (payType==='pic_join' && !selectedPic)}
                   style={{ flex:2, padding:'12px', borderRadius:10, border:'none', background:saving?'#94A3B8':'#16a34a', color:'#fff', cursor:'pointer', fontWeight:700, fontSize:15 }}>
                   {saving?(lang==='fr'?'Enregistrement...':'Saving...'):`💾 ${lang==='fr'?'Confirmer le paiement':'Confirm payment'}`}
                 </button>

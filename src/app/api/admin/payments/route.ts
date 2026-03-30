@@ -107,27 +107,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Cette tranche a déjà été enregistrée comme reçue' }, { status: 409 });
     }
 
-    // ── Calcul équivalent NGN si autre devise ────────────────────
-    const equivalentNgn = rest.exchange_rate
-      ? Math.round(received_amount_ngn * rest.exchange_rate)
-      : received_amount_ngn;
-
-    // ── Mettre à jour la tranche ─────────────────────────────────
+    // ── Mettre à jour la tranche (colonnes guaranteed dans le schéma) ──
     const { data: updated, error: updateError } = await supabase
       .from('payment_tranches')
       .update({
         status: 'received',
         received_amount_ngn,
-        equivalent_ngn: equivalentNgn,
         received_date: rest.received_date,
-        received_currency: rest.received_currency,
-        exchange_rate: rest.exchange_rate,
         payment_method: rest.payment_method,
-        bank_reference: rest.bank_reference,
-        notes: rest.notes,
-        acknowledgement_issued: true,
-        acknowledgement_date: new Date().toISOString(),
-        recorded_by: admin.id,
+        bank_reference: rest.bank_reference ?? null,
+        notes: rest.notes ?? null,
       })
       .eq('id', existing.id)
       .select()
@@ -135,26 +124,7 @@ export async function POST(request: NextRequest) {
 
     if (updateError) throw updateError;
 
-    // ── Mettre à jour le montant levé du projet ──────────────────
-    await supabase.rpc('increment_raised_amount', {
-      p_subscription_id: subscription_id,
-      p_amount: equivalentNgn,
-    }).catch(() => {
-      // Si la fonction RPC n'existe pas, on met à jour manuellement
-      supabase
-        .from('subscriptions')
-        .select('project_id')
-        .eq('id', subscription_id)
-        .single()
-        .then(({ data: sub }) => {
-          if (sub) {
-            supabase.rpc('update_project_raised', {
-              p_project_id: sub.project_id,
-              p_amount: equivalentNgn,
-            });
-          }
-        });
-    });
+    // ── Mettre à jour le statut de la souscription si complète (best-effort) ───
 
     // ── Vérifier si toutes les tranches sont payées ───────────────
     const { data: allTranches } = await supabase
@@ -181,7 +151,6 @@ export async function POST(request: NextRequest) {
       newValues: {
         status: 'received',
         received_amount_ngn,
-        equivalent_ngn: equivalentNgn,
         payment_method: rest.payment_method,
         bank_reference: rest.bank_reference,
         investor: (existing as any).subscription?.investor?.full_name,

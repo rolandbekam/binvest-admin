@@ -61,14 +61,11 @@ export async function POST(request: NextRequest) {
       pic_id,            // required if type === 'pic_fee'
     } = body;
 
-    if (!investor_id || !type || !payment_date || !payment_method) {
-      return NextResponse.json({ error: 'investor_id, type, payment_date et payment_method sont obligatoires' }, { status: 400 });
+    if (!investor_id || !payment_date || !payment_method) {
+      return NextResponse.json({ error: 'investor_id, payment_date et payment_method sont obligatoires' }, { status: 400 });
     }
-    if (!['investor_fee', 'pic_fee'].includes(type)) {
-      return NextResponse.json({ error: 'type doit être "investor_fee" ou "pic_fee"' }, { status: 400 });
-    }
-    if (type === 'pic_fee' && !pic_id) {
-      return NextResponse.json({ error: 'pic_id requis pour un paiement PIC' }, { status: 400 });
+    if (type !== 'investor_fee') {
+      return NextResponse.json({ error: 'type doit être "investor_fee"' }, { status: 400 });
     }
 
     const supabase = createAdminClient();
@@ -142,98 +139,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ record, end_date: endDateStr }, { status: 201 });
     }
 
-    // ── TYPE C: PIC adhesion fee ────────────────────────────────
-    // Verify PIC exists and is open
-    const { data: pic } = await supabase
-      .from('pics')
-      .select('id, name, status, max_members, memberships:pic_memberships(id,status)')
-      .eq('id', pic_id)
-      .single();
-
-    if (!pic) return NextResponse.json({ error: 'PIC introuvable' }, { status: 404 });
-    if (pic.status !== 'active') return NextResponse.json({ error: 'Ce PIC est fermé' }, { status: 422 });
-
-    const activeCount = (pic.memberships ?? []).filter((m: any) => m.status === 'active').length;
-    if (activeCount >= pic.max_members) {
-      return NextResponse.json({ error: `PIC complet (${pic.max_members} membres max)` }, { status: 422 });
-    }
-
-    // Upsert pic_membership and get/create it
-    let membershipId: string | null = null;
-    const { data: existing } = await supabase
-      .from('pic_memberships')
-      .select('id, status, fee_paid')
-      .eq('pic_id', pic_id)
-      .eq('investor_id', investor_id)
-      .maybeSingle();
-
-    if (existing?.status === 'active') {
-      // Already a member — just mark fee paid
-      await supabase.from('pic_memberships').update({ fee_paid: true }).eq('id', existing.id);
-      membershipId = existing.id;
-    } else {
-      // Generate anonymous number
-      const year = new Date().getFullYear();
-      const { data: lastM } = await supabase
-        .from('pic_memberships')
-        .select('anonymous_number')
-        .like('anonymous_number', `PIC-${year}-%`)
-        .order('anonymous_number', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      let seq = 1;
-      if (lastM?.anonymous_number) {
-        const parts = lastM.anonymous_number.split('-');
-        seq = (parseInt(parts[2] ?? '0', 10) || 0) + 1;
-      }
-      const anonymous_number = `PIC-${year}-${String(seq).padStart(3, '0')}`;
-
-      const { data: newM, error: mErr } = await supabase
-        .from('pic_memberships')
-        .insert({ pic_id, investor_id, anonymous_number, fee_paid: true, status: 'active' })
-        .select()
-        .single();
-
-      if (mErr) throw mErr;
-      membershipId = newM.id;
-    }
-
-    // Insert fee record
-    const { data: record, error: insertErr } = await supabase
-      .from('investor_subscriptions')
-      .insert({
-        investor_id,
-        type: 'pic_fee',
-        amount_xaf: effectiveAmount,
-        payment_date: startDate,
-        payment_method,
-        bank_reference: bank_reference ?? null,
-        notes: notes ?? null,
-        start_date: startDate,
-        end_date: null,
-        pic_id,
-        pic_membership_id: membershipId,
-        status: 'active',
-        recorded_by: admin.email,
-      })
-      .select()
-      .single();
-
-    if (insertErr) throw insertErr;
-
-    // Update investor pic flags
-    await supabase.from('investors').update({ pic_member: true, pic_fee_paid: true, pic_joined_at: new Date().toISOString() }).eq('id', investor_id);
-
-    await auditLog({
-      adminId: admin.id, adminEmail: admin.email,
-      action: 'pic_fee.record',
-      resourceType: 'investor_subscription', resourceId: record.id,
-      newValues: { investor_id, pic_id, pic_name: pic.name, amount_xaf: effectiveAmount },
-      ipAddress: admin.ip, severity: 'info',
-    });
-
-    return NextResponse.json({ record, pic_name: pic.name, membership_id: membershipId }, { status: 201 });
+    // Should never reach here — only investor_fee is handled
+    return NextResponse.json({ error: 'Type de paiement non supporté' }, { status: 400 });
   } catch (err: any) {
     console.error('[INVESTOR-SUBS POST]', err);
     return NextResponse.json({ error: err.message ?? 'Erreur serveur' }, { status: 500 });
