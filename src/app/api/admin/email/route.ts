@@ -6,7 +6,7 @@ import { createAdminClient, getAdminFromHeaders, auditLog } from '@/lib/supabase
 import { z } from 'zod';
 
 const EmailSchema = z.object({
-  type: z.enum(['payment_received', 'reminder', 'welcome', 'custom']),
+  type: z.enum(['payment_received', 'reminder', 'welcome', 'kyc_approved', 'kyc_rejected', 'custom']),
   investor_id: z.string().uuid().optional(),
   to_email: z.string().email().optional(),
   to_name: z.string().optional(),
@@ -16,7 +16,7 @@ const EmailSchema = z.object({
 });
 
 // Templates email
-const TEMPLATES = {
+const TEMPLATES: Record<string, any> = {
   payment_received: {
     subject_fr: '✅ Paiement reçu — B-Invest Limited',
     subject_en: '✅ Payment received — B-Invest Limited',
@@ -120,7 +120,81 @@ Best regards,
 Founder & CEO — B-Invest Limited
     `.trim(),
   },
-};
+  kyc_approved: {
+    subject_fr: '✅ Votre KYC a été validé — B-Invest Limited',
+    subject_en: '✅ Your KYC has been approved — B-Invest Limited',
+    body_fr: (v: Record<string,string>) => `
+Bonjour ${v.name},
+
+Excellente nouvelle ! 🎉 Votre vérification d'identité (KYC) a été **validée** par notre équipe.
+
+Vous pouvez désormais :
+📱 Accéder à toutes les fonctionnalités de l'application Buam Finance
+💼 Souscrire aux projets d'investissement B-Invest
+📋 Consulter et signer votre contrat DIA
+
+Bienvenue dans la communauté d'investisseurs B-Invest !
+
+Cordialement,
+**L'équipe B-Invest Limited**
+    `.trim(),
+    body_en: (v: Record<string,string>) => `
+Hello ${v.name},
+
+Great news! 🎉 Your identity verification (KYC) has been **approved** by our team.
+
+You can now:
+📱 Access all features of the Buam Finance app
+💼 Subscribe to B-Invest investment projects
+📋 View and sign your DIA contract
+
+Welcome to the B-Invest investor community!
+
+Best regards,
+**The B-Invest Limited Team**
+    `.trim(),
+  },
+  kyc_rejected: {
+    subject_fr: '⚠️ Vérification KYC — Action requise — B-Invest Limited',
+    subject_en: '⚠️ KYC Verification — Action required — B-Invest Limited',
+    body_fr: (v: Record<string,string>) => `
+Bonjour ${v.name},
+
+Nous avons examiné votre dossier KYC et nous ne sommes malheureusement pas en mesure de le valider pour le moment.
+
+**Motif du rejet :**
+${v.reason}
+
+**Comment procéder :**
+1. Connectez-vous à l'application Buam Finance
+2. Accédez à votre profil → Section KYC
+3. Soumettez à nouveau vos documents en tenant compte du motif indiqué ci-dessus
+
+Si vous avez des questions, contactez notre équipe à contact@binvest.ng
+
+Cordialement,
+**L'équipe B-Invest Limited**
+    `.trim(),
+    body_en: (v: Record<string,string>) => `
+Hello ${v.name},
+
+We have reviewed your KYC application and unfortunately are unable to validate it at this time.
+
+**Reason for rejection:**
+${v.reason}
+
+**What to do next:**
+1. Open the Buam Finance app
+2. Go to your profile → KYC section
+3. Resubmit your documents addressing the reason mentioned above
+
+If you have any questions, contact our team at contact@binvest.ng
+
+Best regards,
+**The B-Invest Limited Team**
+    `.trim(),
+  },
+};  // end TEMPLATES
 
 async function sendEmail({ to, subject, body, html }: { to: string; subject: string; body: string; html?: string }) {
   // Option 1: Resend (recommandé — gratuit jusqu'à 3000/mois)

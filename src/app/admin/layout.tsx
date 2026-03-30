@@ -1,10 +1,11 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import toast from 'react-hot-toast';
 import { getLang, setLang, T, type Lang } from '@/lib/i18n';
+import { getSupabaseBrowser } from '@/lib/supabase-browser';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -13,7 +14,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [collapsed, setCollapsed] = useState(false);
   const [lang, setLangState] = useState<Lang>('fr');
   const [kycPending, setKycPending] = useState(0);
+  const [paymentPending, setPaymentPending] = useState(0);
   const [kycDismissed, setKycDismissed] = useState(false);
+  const [payDismissed, setPayDismissed] = useState(false);
 
   useEffect(() => {
     setLangState(getLang());
@@ -28,21 +31,41 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       .catch(() => {});
   }, []);
 
-  // Poll KYC pending count every 60s
-  useEffect(() => {
-    const fetchKyc = () => {
-      fetch('/api/admin/investors?kyc_status=pending', { credentials: 'include' })
-        .then(r => r.json())
-        .then(d => setKycPending((d.investors ?? []).length))
-        .catch(() => {});
-    };
-    fetchKyc();
-    const timer = setInterval(fetchKyc, 60000);
-    return () => clearInterval(timer);
+  // Fetch all notification counts from unified API
+  const fetchNotifications = useCallback(() => {
+    fetch('/api/admin/notifications', { credentials: 'include' })
+      .then(r => r.json())
+      .then(d => {
+        setKycPending(d.counts?.kyc ?? 0);
+        setPaymentPending(d.counts?.payments ?? 0);
+      })
+      .catch(() => {});
   }, []);
 
-  // Reset dismissed state when count changes
+  // Initial load + polling every 60s
+  useEffect(() => {
+    fetchNotifications();
+    const timer = setInterval(fetchNotifications, 60000);
+    return () => clearInterval(timer);
+  }, [fetchNotifications]);
+
+  // Supabase Realtime — subscribe to investors + payment_requests changes
+  useEffect(() => {
+    const supabase = getSupabaseBrowser();
+    if (!supabase) return; // fall back to polling if no anon key
+
+    const channel = supabase
+      .channel('admin-notifications')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'investors', filter: 'kyc_status=eq.in_review' }, fetchNotifications)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_requests', filter: 'status=eq.submitted' }, fetchNotifications)
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [fetchNotifications]);
+
+  // Reset dismissed banners when counts change
   useEffect(() => { setKycDismissed(false); }, [kycPending]);
+  useEffect(() => { setPayDismissed(false); }, [paymentPending]);
 
   const t = T[lang].nav;
 
@@ -51,7 +74,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { href: '/admin/dashboard', icon: '📊', label: t.dashboard },
     { href: '/admin/projects',  icon: '🌍', label: t.projects },
     { href: '/admin/subscriptions', icon: '📋', label: t.subscriptions },
-    { href: '/admin/payments',  icon: '💰', label: t.payments },
+    { href: '/admin/payments',  icon: '💰', label: t.payments, badge: paymentPending > 0 ? paymentPending : undefined },
     { section: t.s_finance },
     { href: '/admin/accounting', icon: '💼', label: t.accounting },
     { href: '/admin/finances',   icon: '🏦', label: t.finances },
@@ -83,6 +106,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const currentLabel = NAV.find(n => 'href' in n && pathname.startsWith((n as any).href))?.label ?? '';
 
   const showKycBanner = kycPending > 0 && !kycDismissed && !pathname.startsWith('/admin/investors');
+  const showPayBanner = paymentPending > 0 && !payDismissed && !pathname.startsWith('/admin/payments');
 
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: '#F4F6FA', fontFamily: 'Outfit,sans-serif' }}>
@@ -230,18 +254,19 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             {/* KYC alert badge in topbar */}
             {kycPending > 0 && (
-              <Link href="/admin/investors?kyc_status=pending" style={{ textDecoration: 'none' }}>
-                <div style={{
-                  display: 'flex', alignItems: 'center', gap: 6,
-                  padding: '5px 12px', borderRadius: 999,
-                  background: '#FEF2F2', border: '1px solid #FECACA',
-                  color: '#991B1B', fontSize: 12, fontWeight: 700,
-                  cursor: 'pointer', transition: 'all 0.15s',
-                }}>
+              <Link href="/admin/investors?kyc_status=in_review" style={{ textDecoration: 'none' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 999, background: '#FEF2F2', border: '1px solid #FECACA', color: '#991B1B', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
                   <span style={{ fontSize: 14 }}>🔴</span>
-                  <span>
-                    {kycPending} KYC {lang === 'fr' ? 'en attente' : 'pending'}
-                  </span>
+                  <span>{kycPending} KYC {lang === 'fr' ? 'à valider' : 'to validate'}</span>
+                </div>
+              </Link>
+            )}
+            {/* Payment alert badge in topbar */}
+            {paymentPending > 0 && (
+              <Link href="/admin/payments" style={{ textDecoration: 'none' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 999, background: '#FFFBEB', border: '1px solid #FDE68A', color: '#92400E', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                  <span style={{ fontSize: 14 }}>💳</span>
+                  <span>{paymentPending} {lang === 'fr' ? 'paiement(s) à confirmer' : 'payment(s) to confirm'}</span>
                 </div>
               </Link>
             )}
@@ -252,15 +277,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           </div>
         </header>
 
-        {/* KYC banner — shown on all pages except /admin/investors */}
+        {/* KYC banner */}
         {showKycBanner && (
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 12,
-            padding: '10px 24px',
-            background: 'linear-gradient(90deg, #7F1D1D, #991B1B)',
-            borderBottom: '1px solid #B91C1C',
-            flexShrink: 0,
-          }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 24px', background: 'linear-gradient(90deg, #7F1D1D, #991B1B)', borderBottom: '1px solid #B91C1C', flexShrink: 0 }}>
             <span style={{ fontSize: 18, flexShrink: 0 }}>🔴</span>
             <div style={{ flex: 1 }}>
               <span style={{ color: '#fff', fontSize: 13, fontWeight: 700 }}>
@@ -269,21 +288,33 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   : `${kycPending} investor${kycPending > 1 ? 's' : ''} pending KYC validation`}
               </span>
               <span style={{ color: 'rgba(255,255,255,0.65)', fontSize: 12, marginLeft: 8 }}>
-                {lang === 'fr'
-                  ? '— Les souscriptions sont bloquées jusqu\'à validation'
-                  : '— Subscriptions are blocked until validated'}
+                {lang === 'fr' ? '— Souscriptions bloquées jusqu\'à validation' : '— Subscriptions blocked until validated'}
               </span>
             </div>
-            <Link href="/admin/investors?kyc_status=pending"
-              style={{ padding: '6px 14px', borderRadius: 8, background: '#fff', color: '#991B1B', fontSize: 12, fontWeight: 700, textDecoration: 'none', flexShrink: 0 }}>
+            <Link href="/admin/investors?kyc_status=in_review" style={{ padding: '6px 14px', borderRadius: 8, background: '#fff', color: '#991B1B', fontSize: 12, fontWeight: 700, textDecoration: 'none', flexShrink: 0 }}>
               {lang === 'fr' ? 'Valider maintenant →' : 'Validate now →'}
             </Link>
-            <button
-              onClick={() => setKycDismissed(true)}
-              style={{ background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', fontSize: 14, padding: '4px 8px', flexShrink: 0, lineHeight: 1 }}
-              title={lang === 'fr' ? 'Masquer' : 'Dismiss'}>
-              ✕
-            </button>
+            <button onClick={() => setKycDismissed(true)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', fontSize: 14, padding: '4px 8px', flexShrink: 0, lineHeight: 1 }}>✕</button>
+          </div>
+        )}
+        {/* Payment banner */}
+        {showPayBanner && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 24px', background: 'linear-gradient(90deg, #78350F, #92400E)', borderBottom: '1px solid #B45309', flexShrink: 0 }}>
+            <span style={{ fontSize: 18, flexShrink: 0 }}>💳</span>
+            <div style={{ flex: 1 }}>
+              <span style={{ color: '#fff', fontSize: 13, fontWeight: 700 }}>
+                {lang === 'fr'
+                  ? `${paymentPending} paiement${paymentPending > 1 ? 's' : ''} en attente de confirmation`
+                  : `${paymentPending} payment${paymentPending > 1 ? 's' : ''} awaiting confirmation`}
+              </span>
+              <span style={{ color: 'rgba(255,255,255,0.65)', fontSize: 12, marginLeft: 8 }}>
+                {lang === 'fr' ? '— Soumis depuis l\'app Buam Finance' : '— Submitted from the Buam Finance app'}
+              </span>
+            </div>
+            <Link href="/admin/payments" style={{ padding: '6px 14px', borderRadius: 8, background: '#fff', color: '#92400E', fontSize: 12, fontWeight: 700, textDecoration: 'none', flexShrink: 0 }}>
+              {lang === 'fr' ? 'Confirmer →' : 'Confirm →'}
+            </Link>
+            <button onClick={() => setPayDismissed(true)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', fontSize: 14, padding: '4px 8px', flexShrink: 0, lineHeight: 1 }}>✕</button>
           </div>
         )}
 

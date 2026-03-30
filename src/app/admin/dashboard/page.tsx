@@ -82,11 +82,28 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(new Date());
 
+  // ── Notifications state ──────────────────────────────────────────
+  const [kycPending, setKycPending] = useState<any[]>([]);
+  const [paymentPending, setPaymentPending] = useState<any[]>([]);
+  // KYC reject modal
+  const [rejectTarget, setRejectTarget] = useState<any>(null);
+  const [rejectReason, setRejectReason] = useState('');
+  const [kycActioning, setKycActioning] = useState<string|null>(null);
+
   useEffect(() => {
     setL(getLang());
     const h = () => setL(getLang());
     window.addEventListener('lang-change', h);
     return () => window.removeEventListener('lang-change', h);
+  }, []);
+
+  const loadNotifications = useCallback(async () => {
+    try {
+      const r = await fetch('/api/admin/notifications', { credentials:'include' });
+      const d = await r.json();
+      setKycPending(d.kyc_pending ?? []);
+      setPaymentPending(d.payment_pending ?? []);
+    } catch {}
   }, []);
 
   const loadStats = useCallback(async () => {
@@ -107,10 +124,30 @@ export default function DashboardPage() {
 
   useEffect(() => {
     loadStats();
-    // Realtime: rafraîchissement toutes les 30 secondes
-    const interval = setInterval(() => { loadStats(); }, 30000);
+    loadNotifications();
+    const interval = setInterval(() => { loadStats(); loadNotifications(); }, 30000);
     return () => clearInterval(interval);
-  }, [loadStats]);
+  }, [loadStats, loadNotifications]);
+
+  // KYC action handler
+  const handleKycAction = async (investorId: string, action: 'approve'|'reject', reason?: string) => {
+    setKycActioning(investorId);
+    try {
+      const r = await fetch('/api/admin/notifications', {
+        method: 'POST', headers: {'Content-Type':'application/json'}, credentials:'include',
+        body: JSON.stringify({ investor_id: investorId, action, rejection_reason: reason, send_email: true }),
+      });
+      const d = await r.json();
+      if (!r.ok) { toast.error(d.error ?? 'Erreur'); return; }
+      toast.success(action === 'approve'
+        ? (lang==='fr'?'✅ KYC validé — email envoyé':'✅ KYC approved — email sent')
+        : (lang==='fr'?'❌ KYC rejeté — email envoyé':'❌ KYC rejected — email sent'));
+      setRejectTarget(null);
+      setRejectReason('');
+      loadNotifications();
+    } catch { toast.error(lang==='fr'?'Erreur réseau':'Network error'); }
+    finally { setKycActioning(null); }
+  };
 
   const t = T[lang];
   const MONTHS = lang === 'fr' ? MONTHS_FR : MONTHS_EN;
@@ -172,6 +209,108 @@ export default function DashboardPage() {
           </div>
         ))}
       </div>
+
+      {/* ── Notification Panel ── */}
+      {(kycPending.length > 0 || paymentPending.length > 0) && (
+        <div style={{ marginBottom:24 }}>
+
+          {/* KYC pending */}
+          {kycPending.length > 0 && (
+            <div style={{ background:'#fff', borderRadius:16, border:'2px solid #FECACA', overflow:'hidden', marginBottom:14 }}>
+              <div style={{ padding:'12px 18px', background:'#FEF2F2', borderBottom:'1px solid #FECACA', display:'flex', alignItems:'center', gap:10 }}>
+                <span style={{ fontSize:18 }}>🔴</span>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontWeight:700, color:'#991B1B', fontSize:14 }}>
+                    {kycPending.length} {lang==='fr'?'dossier(s) KYC à valider':'KYC submission(s) to validate'}
+                  </div>
+                  <div style={{ fontSize:12, color:'#B91C1C' }}>{lang==='fr'?'Soumis depuis l\'app Buam Finance — action requise':'Submitted from Buam Finance app — action required'}</div>
+                </div>
+                <a href="/admin/investors?kyc_status=in_review" style={{ fontSize:12, color:'#991B1B', fontWeight:700, textDecoration:'none' }}>{lang==='fr'?'Voir tous →':'View all →'}</a>
+              </div>
+              <div>
+                {kycPending.slice(0, 5).map((inv: any, i: number) => (
+                  <div key={inv.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 18px', borderBottom: i < Math.min(kycPending.length,5)-1 ? '1px solid #FEF2F2' : 'none' }}>
+                    <div style={{ width:36, height:36, borderRadius:'50%', background:'#E63946', display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontSize:12, fontWeight:700, flexShrink:0 }}>
+                      {inv.full_name?.split(' ').map((n:string)=>n[0]).join('').slice(0,2).toUpperCase()}
+                    </div>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontSize:13, fontWeight:600, color:'#0F1E35' }}>{inv.full_name}</div>
+                      <div style={{ fontSize:11, color:'#94A3B8' }}>{inv.email} · {inv.country}</div>
+                    </div>
+                    <div style={{ display:'flex', gap:6 }}>
+                      <a href={`/admin/investors/${inv.id}`}
+                        style={{ padding:'5px 12px', borderRadius:7, background:'#1B3A6B', color:'#fff', textDecoration:'none', fontSize:12, fontWeight:700 }}>
+                        👁 {lang==='fr'?'Valider KYC':'Validate KYC'}
+                      </a>
+                      <button onClick={()=>{ setRejectTarget(inv); setRejectReason(''); }}
+                        style={{ padding:'5px 12px', borderRadius:7, border:'1px solid #E63946', background:'#fff', color:'#E63946', cursor:'pointer', fontSize:12, fontWeight:700 }}>
+                        ✕ {lang==='fr'?'Rejeter':'Reject'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Payment pending */}
+          {paymentPending.length > 0 && (
+            <div style={{ background:'#fff', borderRadius:16, border:'2px solid #FDE68A', overflow:'hidden' }}>
+              <div style={{ padding:'12px 18px', background:'#FFFBEB', borderBottom:'1px solid #FDE68A', display:'flex', alignItems:'center', gap:10 }}>
+                <span style={{ fontSize:18 }}>💳</span>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontWeight:700, color:'#92400E', fontSize:14 }}>
+                    {paymentPending.length} {lang==='fr'?'paiement(s) en attente de confirmation':'payment(s) awaiting confirmation'}
+                  </div>
+                  <div style={{ fontSize:12, color:'#B45309' }}>{lang==='fr'?'Soumis depuis l\'app mobile':'Submitted from the mobile app'}</div>
+                </div>
+                <a href="/admin/payments" style={{ padding:'6px 14px', borderRadius:8, background:'#92400E', color:'#fff', textDecoration:'none', fontSize:12, fontWeight:700 }}>
+                  {lang==='fr'?'Confirmer les paiements →':'Confirm payments →'}
+                </a>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── KYC Reject Modal ── */}
+      {rejectTarget && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:1000 }}
+          onClick={e=>{ if(e.target===e.currentTarget) { setRejectTarget(null); setRejectReason(''); } }}>
+          <div style={{ background:'#fff', borderRadius:20, padding:28, width:'100%', maxWidth:480, boxShadow:'0 24px 48px rgba(0,0,0,0.25)' }}>
+            <h3 style={{ fontFamily:'Syne,sans-serif', fontSize:18, fontWeight:700, color:'#991B1B', margin:'0 0 6px' }}>
+              ❌ {lang==='fr'?'Rejeter le KYC':'Reject KYC'}
+            </h3>
+            <p style={{ color:'#5A6E8A', fontSize:13, marginBottom:20 }}>
+              {lang==='fr'?'Investisseur :':'Investor:'} <strong>{rejectTarget.full_name}</strong> · {rejectTarget.email}
+            </p>
+            <div style={{ marginBottom:16 }}>
+              <label style={{ fontSize:12, fontWeight:600, color:'#374151', display:'block', marginBottom:6 }}>
+                {lang==='fr'?'Motif du rejet * (sera envoyé par email)':'Rejection reason * (will be sent by email)'}
+              </label>
+              <textarea
+                value={rejectReason}
+                onChange={e=>setRejectReason(e.target.value)}
+                rows={4}
+                placeholder={lang==='fr'?'Ex: Document illisible, selfie non conforme, pièce d\'identité expirée...':'E.g.: Unreadable document, non-compliant selfie, expired ID...'}
+                style={{ width:'100%', padding:'10px 12px', borderRadius:8, border:'1px solid #E2E8F0', fontSize:13, fontFamily:'Outfit,sans-serif', resize:'vertical', outline:'none', boxSizing:'border-box' }}
+                autoFocus />
+            </div>
+            <div style={{ display:'flex', gap:10 }}>
+              <button onClick={()=>{ setRejectTarget(null); setRejectReason(''); }}
+                style={{ flex:1, padding:'11px', borderRadius:10, border:'1px solid #E2E8F0', background:'#fff', cursor:'pointer', fontWeight:600, color:'#5A6E8A', fontSize:14 }}>
+                {lang==='fr'?'Annuler':'Cancel'}
+              </button>
+              <button
+                onClick={()=>handleKycAction(rejectTarget.id, 'reject', rejectReason)}
+                disabled={!rejectReason.trim() || kycActioning === rejectTarget.id}
+                style={{ flex:2, padding:'11px', borderRadius:10, border:'none', background: !rejectReason.trim() || kycActioning===rejectTarget.id ? '#94A3B8' : '#E63946', color:'#fff', cursor: !rejectReason.trim() ? 'not-allowed' : 'pointer', fontWeight:700, fontSize:14 }}>
+                {kycActioning===rejectTarget.id ? (lang==='fr'?'Envoi...':'Sending...') : `❌ ${lang==='fr'?'Confirmer le rejet':'Confirm rejection'}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Alertes */}
       {(stats.late_payments > 0 || stats.pending_payments > 3) && (
