@@ -141,6 +141,30 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     if (error) throw error;
 
+    // Sync kyc_submissions table when KYC status changes (best-effort)
+    if (update.kyc_status) {
+      const kycSubUpdate: any = {
+        status: update.kyc_status,
+        reviewed_by: admin.email,
+        reviewed_at: new Date().toISOString(),
+      };
+      if (update.kyc_rejection_reason) kycSubUpdate.rejection_reason = update.kyc_rejection_reason;
+
+      // Match by investor_id or by user_id
+      await Promise.allSettled([
+        supabase.from('kyc_submissions').update(kycSubUpdate)
+          .eq('investor_id', id).in('status', ['submitted', 'pending', 'in_review']),
+        ...(data?.user_id ? [
+          supabase.from('kyc_submissions').update(kycSubUpdate)
+            .eq('user_id', data.user_id).in('status', ['submitted', 'pending', 'in_review']),
+        ] : []),
+        // Mark related notifications as read
+        supabase.from('notifications').update({ is_read: true })
+          .eq('type', 'kyc').eq('is_read', false)
+          .eq('user_id', data?.user_id ?? ''),
+      ]);
+    }
+
     // Determine audit severity
     const severity = update.is_active === false ? 'warning'
       : update.kyc_status === 'approved' || update.kyc_status === 'rejected' ? 'warning'

@@ -82,9 +82,8 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(new Date());
 
-  // ── Notifications state ──────────────────────────────────────────
-  const [kycPending, setKycPending] = useState<any[]>([]);
-  const [paymentPending, setPaymentPending] = useState<any[]>([]);
+  // ── Notifications from `notifications` table ────────────────────
+  const [notifs, setNotifs] = useState<any[]>([]);
   // KYC reject modal
   const [rejectTarget, setRejectTarget] = useState<any>(null);
   const [rejectReason, setRejectReason] = useState('');
@@ -101,8 +100,7 @@ export default function DashboardPage() {
     try {
       const r = await fetch('/api/admin/notifications', { credentials:'include' });
       const d = await r.json();
-      setKycPending(d.kyc_pending ?? []);
-      setPaymentPending(d.payment_pending ?? []);
+      setNotifs(d.notifications ?? []);
     } catch {}
   }, []);
 
@@ -129,13 +127,22 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, [loadStats, loadNotifications]);
 
-  // KYC action handler
-  const handleKycAction = async (investorId: string, action: 'approve'|'reject', reason?: string) => {
+  // Mark a single notification as read
+  const markRead = async (id: string) => {
+    await fetch('/api/admin/notifications', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+      body: JSON.stringify({ id }),
+    });
+    setNotifs(prev => prev.filter(n => n.id !== id));
+  };
+
+  // KYC action handler (from notification)
+  const handleKycAction = async (investorId: string, action: 'approve'|'reject', reason?: string, notifId?: string) => {
     setKycActioning(investorId);
     try {
       const r = await fetch('/api/admin/notifications', {
         method: 'POST', headers: {'Content-Type':'application/json'}, credentials:'include',
-        body: JSON.stringify({ investor_id: investorId, action, rejection_reason: reason, send_email: true }),
+        body: JSON.stringify({ investor_id: investorId, action, rejection_reason: reason, notification_id: notifId, send_email: true }),
       });
       const d = await r.json();
       if (!r.ok) { toast.error(d.error ?? 'Erreur'); return; }
@@ -210,66 +217,79 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      {/* ── Notification Panel ── */}
-      {(kycPending.length > 0 || paymentPending.length > 0) && (
-        <div style={{ marginBottom:24 }}>
-
-          {/* KYC pending */}
-          {kycPending.length > 0 && (
-            <div style={{ background:'#fff', borderRadius:16, border:'2px solid #FECACA', overflow:'hidden', marginBottom:14 }}>
-              <div style={{ padding:'12px 18px', background:'#FEF2F2', borderBottom:'1px solid #FECACA', display:'flex', alignItems:'center', gap:10 }}>
-                <span style={{ fontSize:18 }}>🔴</span>
-                <div style={{ flex:1 }}>
-                  <div style={{ fontWeight:700, color:'#991B1B', fontSize:14 }}>
-                    {kycPending.length} {lang==='fr'?'dossier(s) KYC à valider':'KYC submission(s) to validate'}
-                  </div>
-                  <div style={{ fontSize:12, color:'#B91C1C' }}>{lang==='fr'?'Soumis depuis l\'app Buam Finance — action requise':'Submitted from Buam Finance app — action required'}</div>
-                </div>
-                <a href="/admin/investors?kyc_status=in_review" style={{ fontSize:12, color:'#991B1B', fontWeight:700, textDecoration:'none' }}>{lang==='fr'?'Voir tous →':'View all →'}</a>
+      {/* ── Section Alertes — notifications non lues ── */}
+      {notifs.length > 0 && (
+        <div style={{ background:'#fff', borderRadius:16, border:'2px solid #FECACA', overflow:'hidden', marginBottom:24 }}>
+          {/* Header */}
+          <div style={{ padding:'12px 18px', background:'#FEF2F2', borderBottom:'1px solid #FECACA', display:'flex', alignItems:'center', gap:10 }}>
+            <span style={{ fontSize:18 }}>🔔</span>
+            <div style={{ flex:1 }}>
+              <div style={{ fontWeight:700, color:'#991B1B', fontSize:14 }}>
+                {notifs.length} {lang==='fr'?'alerte(s) non lue(s)':'unread alert(s)'}
               </div>
-              <div>
-                {kycPending.slice(0, 5).map((inv: any, i: number) => (
-                  <div key={inv.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 18px', borderBottom: i < Math.min(kycPending.length,5)-1 ? '1px solid #FEF2F2' : 'none' }}>
-                    <div style={{ width:36, height:36, borderRadius:'50%', background:'#E63946', display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontSize:12, fontWeight:700, flexShrink:0 }}>
-                      {inv.full_name?.split(' ').map((n:string)=>n[0]).join('').slice(0,2).toUpperCase()}
-                    </div>
-                    <div style={{ flex:1, minWidth:0 }}>
-                      <div style={{ fontSize:13, fontWeight:600, color:'#0F1E35' }}>{inv.full_name}</div>
-                      <div style={{ fontSize:11, color:'#94A3B8' }}>{inv.email} · {inv.country}</div>
-                    </div>
-                    <div style={{ display:'flex', gap:6 }}>
-                      <a href={`/admin/investors/${inv.id}`}
-                        style={{ padding:'5px 12px', borderRadius:7, background:'#1B3A6B', color:'#fff', textDecoration:'none', fontSize:12, fontWeight:700 }}>
-                        👁 {lang==='fr'?'Valider KYC':'Validate KYC'}
+              <div style={{ fontSize:12, color:'#B91C1C' }}>{lang==='fr'?'Soumis depuis l\'app Buam Finance':'Submitted from the Buam Finance app'}</div>
+            </div>
+            <button onClick={async()=>{
+              await fetch('/api/admin/notifications',{method:'PATCH',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({mark_all:true})});
+              setNotifs([]);
+            }} style={{ fontSize:12, color:'#991B1B', fontWeight:700, cursor:'pointer', background:'none', border:'1px solid #FECACA', borderRadius:7, padding:'5px 12px' }}>
+              {lang==='fr'?'Tout marquer lu':'Mark all read'}
+            </button>
+          </div>
+
+          {/* Rows */}
+          {notifs.slice(0, 10).map((n: any, i: number) => {
+            const isKyc = n.type === 'kyc' || n.data?.action === 'kyc_submitted';
+            const isPayment = n.type === 'payment' || n.data?.action === 'payment_submitted';
+            const investorId = n.data?.investor_id ?? n.data?.user_id ?? n.user_id;
+            const name = n.data?.investor_name ?? n.data?.name ?? n.data?.full_name ?? '';
+            const icon = isKyc ? '🪪' : isPayment ? '💳' : '🔔';
+            const iconBg = isKyc ? '#FEF2F2' : isPayment ? '#FFFBEB' : '#EFF6FF';
+            const iconColor = isKyc ? '#991B1B' : isPayment ? '#92400E' : '#1B3A6B';
+            const label = isKyc
+              ? (lang==='fr'?'Dossier KYC soumis':'KYC submitted')
+              : isPayment
+              ? (lang==='fr'?'Paiement soumis depuis l\'app':'Payment submitted from app')
+              : (n.data?.message ?? n.type ?? 'Notification');
+
+            return (
+              <div key={n.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 18px', borderBottom: i < Math.min(notifs.length,10)-1 ? '1px solid #FEF2F2' : 'none' }}>
+                <div style={{ width:38, height:38, borderRadius:'50%', background:iconBg, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>
+                  {icon}
+                </div>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:13, fontWeight:700, color:iconColor }}>{label}</div>
+                  {name && <div style={{ fontSize:12, color:'#374151', marginTop:1 }}>{name}</div>}
+                  <div style={{ fontSize:11, color:'#94A3B8', marginTop:1 }}>
+                    {new Date(n.created_at).toLocaleString(lang==='fr'?'fr-FR':'en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}
+                  </div>
+                </div>
+                <div style={{ display:'flex', gap:6, flexShrink:0 }}>
+                  {isKyc && investorId && (
+                    <>
+                      <a href={`/admin/investors/${investorId}`}
+                        style={{ padding:'5px 11px', borderRadius:7, background:'#1B3A6B', color:'#fff', textDecoration:'none', fontSize:12, fontWeight:700, whiteSpace:'nowrap' }}>
+                        👁 {lang==='fr'?'Voir profil':'View profile'}
                       </a>
-                      <button onClick={()=>{ setRejectTarget(inv); setRejectReason(''); }}
-                        style={{ padding:'5px 12px', borderRadius:7, border:'1px solid #E63946', background:'#fff', color:'#E63946', cursor:'pointer', fontSize:12, fontWeight:700 }}>
-                        ✕ {lang==='fr'?'Rejeter':'Reject'}
+                      <button onClick={()=>{ setRejectTarget({...n, investorId}); setRejectReason(''); }}
+                        style={{ padding:'5px 11px', borderRadius:7, border:'1px solid #E63946', background:'#fff', color:'#E63946', cursor:'pointer', fontSize:12, fontWeight:700 }}>
+                        ❌ {lang==='fr'?'Rejeter':'Reject'}
                       </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Payment pending */}
-          {paymentPending.length > 0 && (
-            <div style={{ background:'#fff', borderRadius:16, border:'2px solid #FDE68A', overflow:'hidden' }}>
-              <div style={{ padding:'12px 18px', background:'#FFFBEB', borderBottom:'1px solid #FDE68A', display:'flex', alignItems:'center', gap:10 }}>
-                <span style={{ fontSize:18 }}>💳</span>
-                <div style={{ flex:1 }}>
-                  <div style={{ fontWeight:700, color:'#92400E', fontSize:14 }}>
-                    {paymentPending.length} {lang==='fr'?'paiement(s) en attente de confirmation':'payment(s) awaiting confirmation'}
-                  </div>
-                  <div style={{ fontSize:12, color:'#B45309' }}>{lang==='fr'?'Soumis depuis l\'app mobile':'Submitted from the mobile app'}</div>
+                    </>
+                  )}
+                  {isPayment && (
+                    <a href="/admin/payments" style={{ padding:'5px 11px', borderRadius:7, background:'#92400E', color:'#fff', textDecoration:'none', fontSize:12, fontWeight:700 }}>
+                      💳 {lang==='fr'?'Paiements':'Payments'}
+                    </a>
+                  )}
+                  <button onClick={()=>markRead(n.id)}
+                    style={{ padding:'5px 10px', borderRadius:7, border:'1px solid #E2E8F0', background:'#fff', color:'#64748B', cursor:'pointer', fontSize:11, fontWeight:600 }}>
+                    ✓ {lang==='fr'?'Lu':'Read'}
+                  </button>
                 </div>
-                <a href="/admin/payments" style={{ padding:'6px 14px', borderRadius:8, background:'#92400E', color:'#fff', textDecoration:'none', fontSize:12, fontWeight:700 }}>
-                  {lang==='fr'?'Confirmer les paiements →':'Confirm payments →'}
-                </a>
               </div>
-            </div>
-          )}
+            );
+          })}
         </div>
       )}
 
@@ -302,10 +322,10 @@ export default function DashboardPage() {
                 {lang==='fr'?'Annuler':'Cancel'}
               </button>
               <button
-                onClick={()=>handleKycAction(rejectTarget.id, 'reject', rejectReason)}
-                disabled={!rejectReason.trim() || kycActioning === rejectTarget.id}
+                onClick={()=>handleKycAction(rejectTarget.investorId ?? rejectTarget.id, 'reject', rejectReason, rejectTarget.id)}
+                disabled={!rejectReason.trim() || kycActioning === (rejectTarget.investorId ?? rejectTarget.id)}
                 style={{ flex:2, padding:'11px', borderRadius:10, border:'none', background: !rejectReason.trim() || kycActioning===rejectTarget.id ? '#94A3B8' : '#E63946', color:'#fff', cursor: !rejectReason.trim() ? 'not-allowed' : 'pointer', fontWeight:700, fontSize:14 }}>
-                {kycActioning===rejectTarget.id ? (lang==='fr'?'Envoi...':'Sending...') : `❌ ${lang==='fr'?'Confirmer le rejet':'Confirm rejection'}`}
+                {kycActioning===(rejectTarget.investorId??rejectTarget.id) ? (lang==='fr'?'Envoi...':'Sending...') : `❌ ${lang==='fr'?'Confirmer le rejet':'Confirm rejection'}`}
               </button>
             </div>
           </div>

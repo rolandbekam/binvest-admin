@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import Image from 'next/image';
@@ -7,14 +7,43 @@ import toast from 'react-hot-toast';
 import { getLang, setLang, T, type Lang } from '@/lib/i18n';
 import { getSupabaseBrowser } from '@/lib/supabase-browser';
 
+// ── Helper: notification icon + label by type ────────────────────
+function notifMeta(n: any, lang: string) {
+  const action = n.data?.action ?? n.type;
+  if (n.type === 'kyc' || action === 'kyc_submitted') {
+    return { icon: '🪪', color: '#991B1B', bg: '#FEF2F2', label: lang === 'fr' ? 'KYC soumis' : 'KYC submitted' };
+  }
+  if (n.type === 'payment' || action === 'payment_submitted') {
+    return { icon: '💳', color: '#92400E', bg: '#FFFBEB', label: lang === 'fr' ? 'Paiement soumis' : 'Payment submitted' };
+  }
+  return { icon: '🔔', color: '#1B3A6B', bg: '#EFF6FF', label: n.type ?? 'Notification' };
+}
+
+function timeAgo(ts: string, lang: string) {
+  const diff = Date.now() - new Date(ts).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return lang === 'fr' ? 'à l\'instant' : 'just now';
+  if (m < 60) return lang === 'fr' ? `il y a ${m} min` : `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return lang === 'fr' ? `il y a ${h}h` : `${h}h ago`;
+  return lang === 'fr' ? `il y a ${Math.floor(h/24)}j` : `${Math.floor(h/24)}d ago`;
+}
+
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [admin, setAdmin] = useState<any>(null);
   const [collapsed, setCollapsed] = useState(false);
   const [lang, setLangState] = useState<Lang>('fr');
-  const [kycPending, setKycPending] = useState(0);
-  const [paymentPending, setPaymentPending] = useState(0);
+
+  // ── Notification state ──────────────────────────────────────────
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const notifRef = useRef<HTMLDivElement>(null);
+
+  // Derived counts for sidebar badges
+  const kycPending = notifications.filter(n => n.type === 'kyc').length;
+  const paymentPending = notifications.filter(n => n.type === 'payment').length;
   const [kycDismissed, setKycDismissed] = useState(false);
   const [payDismissed, setPayDismissed] = useState(false);
 
@@ -31,37 +60,63 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       .catch(() => {});
   }, []);
 
-  // Fetch all notification counts from unified API
+  // Fetch notifications from the `notifications` table
   const fetchNotifications = useCallback(() => {
     fetch('/api/admin/notifications', { credentials: 'include' })
       .then(r => r.json())
-      .then(d => {
-        setKycPending(d.counts?.kyc ?? 0);
-        setPaymentPending(d.counts?.payments ?? 0);
-      })
+      .then(d => setNotifications(d.notifications ?? []))
       .catch(() => {});
   }, []);
 
-  // Initial load + polling every 60s
+  // Initial load + polling every 30s
   useEffect(() => {
     fetchNotifications();
-    const timer = setInterval(fetchNotifications, 60000);
+    const timer = setInterval(fetchNotifications, 30000);
     return () => clearInterval(timer);
   }, [fetchNotifications]);
 
-  // Supabase Realtime — subscribe to investors + payment_requests changes
+  // Supabase Realtime on the notifications table
   useEffect(() => {
     const supabase = getSupabaseBrowser();
-    if (!supabase) return; // fall back to polling if no anon key
-
+    if (!supabase) return;
     const channel = supabase
-      .channel('admin-notifications')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'investors', filter: 'kyc_status=eq.in_review' }, fetchNotifications)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_requests', filter: 'status=eq.submitted' }, fetchNotifications)
+      .channel('admin-notif-bell')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, () => fetchNotifications())
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'notifications' }, () => fetchNotifications())
       .subscribe();
-
     return () => { supabase.removeChannel(channel); };
   }, [fetchNotifications]);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (!notifOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
+        setNotifOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [notifOpen]);
+
+  // Mark a single notification as read
+  const markRead = useCallback(async (id: string) => {
+    await fetch('/api/admin/notifications', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+      body: JSON.stringify({ id }),
+    });
+    setNotifications(prev => prev.filter(n => n.id !== id));
+  }, []);
+
+  // Mark all as read
+  const markAllRead = useCallback(async () => {
+    await fetch('/api/admin/notifications', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+      body: JSON.stringify({ mark_all: true }),
+    });
+    setNotifications([]);
+    setNotifOpen(false);
+  }, []);
 
   // Reset dismissed banners when counts change
   useEffect(() => { setKycDismissed(false); }, [kycPending]);
@@ -251,25 +306,122 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 700, color: '#0F1E35', fontSize: 15 }}>
             {currentLabel}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            {/* KYC alert badge in topbar */}
-            {kycPending > 0 && (
-              <Link href="/admin/investors?kyc_status=in_review" style={{ textDecoration: 'none' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 999, background: '#FEF2F2', border: '1px solid #FECACA', color: '#991B1B', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
-                  <span style={{ fontSize: 14 }}>🔴</span>
-                  <span>{kycPending} KYC {lang === 'fr' ? 'à valider' : 'to validate'}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+
+            {/* 🔔 Notification bell + dropdown */}
+            <div ref={notifRef} style={{ position: 'relative' }}>
+              <button
+                onClick={() => setNotifOpen(v => !v)}
+                style={{
+                  position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  width: 38, height: 38, borderRadius: '50%', border: 'none', cursor: 'pointer',
+                  background: notifOpen ? '#EFF6FF' : notifications.length > 0 ? '#FEF2F2' : '#F8FAFC',
+                  transition: 'all 0.15s',
+                }}
+                title={lang === 'fr' ? 'Notifications' : 'Notifications'}
+              >
+                <span style={{ fontSize: 18 }}>🔔</span>
+                {notifications.length > 0 && (
+                  <span style={{
+                    position: 'absolute', top: 1, right: 1,
+                    minWidth: 18, height: 18, borderRadius: 999,
+                    background: '#E63946', color: '#fff',
+                    fontSize: 10, fontWeight: 800,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    padding: '0 4px', lineHeight: 1, border: '2px solid #fff',
+                  }}>
+                    {notifications.length > 99 ? '99+' : notifications.length}
+                  </span>
+                )}
+              </button>
+
+              {/* Dropdown panel */}
+              {notifOpen && (
+                <div style={{
+                  position: 'absolute', right: 0, top: 'calc(100% + 8px)',
+                  width: 360, background: '#fff', borderRadius: 16,
+                  border: '1px solid #E2E8F0', boxShadow: '0 12px 40px rgba(0,0,0,0.15)',
+                  zIndex: 999, overflow: 'hidden',
+                }}>
+                  {/* Header */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: '1px solid #F1F5F9' }}>
+                    <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 700, fontSize: 14, color: '#0F1E35' }}>
+                      🔔 {lang === 'fr' ? 'Notifications' : 'Notifications'}
+                      {notifications.length > 0 && (
+                        <span style={{ marginLeft: 8, background: '#E63946', color: '#fff', borderRadius: 999, fontSize: 11, padding: '2px 7px', fontWeight: 800 }}>
+                          {notifications.length}
+                        </span>
+                      )}
+                    </div>
+                    {notifications.length > 0 && (
+                      <button onClick={markAllRead} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: '#5A6E8A', fontWeight: 600, textDecoration: 'underline' }}>
+                        {lang === 'fr' ? 'Tout marquer lu' : 'Mark all read'}
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Notification list */}
+                  <div style={{ maxHeight: 400, overflowY: 'auto' }}>
+                    {notifications.length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '32px 16px', color: '#94A3B8', fontSize: 13 }}>
+                        {lang === 'fr' ? '✅ Aucune notification non lue' : '✅ No unread notifications'}
+                      </div>
+                    ) : notifications.slice(0, 20).map((n, i) => {
+                      const meta = notifMeta(n, lang);
+                      const investorId = n.data?.investor_id ?? n.data?.user_id ?? n.user_id;
+                      const isKyc = n.type === 'kyc' || n.data?.action === 'kyc_submitted';
+                      const isPayment = n.type === 'payment' || n.data?.action === 'payment_submitted';
+                      const name = n.data?.investor_name ?? n.data?.name ?? n.data?.full_name ?? '';
+                      return (
+                        <div key={n.id} style={{
+                          display: 'flex', alignItems: 'flex-start', gap: 10,
+                          padding: '12px 16px',
+                          borderBottom: i < notifications.length - 1 ? '1px solid #F8FAFC' : 'none',
+                          background: '#fff',
+                        }}>
+                          <div style={{ width: 34, height: 34, borderRadius: '50%', background: meta.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>
+                            {meta.icon}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: meta.color }}>{meta.label}</div>
+                            {name && <div style={{ fontSize: 12, color: '#374151', marginTop: 1 }}>{name}</div>}
+                            <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>{timeAgo(n.created_at, lang)}</div>
+                            <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                              {isKyc && investorId && (
+                                <Link href={`/admin/investors/${investorId}`} onClick={() => setNotifOpen(false)}
+                                  style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 6, background: '#1B3A6B', color: '#fff', textDecoration: 'none' }}>
+                                  👁 {lang === 'fr' ? 'Voir profil' : 'View profile'}
+                                </Link>
+                              )}
+                              {isPayment && (
+                                <Link href="/admin/payments" onClick={() => setNotifOpen(false)}
+                                  style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 6, background: '#92400E', color: '#fff', textDecoration: 'none' }}>
+                                  💳 {lang === 'fr' ? 'Voir paiements' : 'View payments'}
+                                </Link>
+                              )}
+                              <button onClick={() => markRead(n.id)}
+                                style={{ fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 6, border: '1px solid #E2E8F0', background: '#fff', color: '#64748B', cursor: 'pointer' }}>
+                                ✓ {lang === 'fr' ? 'Lu' : 'Read'}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Footer */}
+                  <div style={{ padding: '10px 16px', borderTop: '1px solid #F1F5F9', textAlign: 'center' }}>
+                    <Link href="/admin/dashboard" onClick={() => setNotifOpen(false)}
+                      style={{ fontSize: 12, color: '#1B3A6B', fontWeight: 600, textDecoration: 'none' }}>
+                      {lang === 'fr' ? 'Voir toutes les alertes →' : 'View all alerts →'}
+                    </Link>
+                  </div>
                 </div>
-              </Link>
-            )}
-            {/* Payment alert badge in topbar */}
-            {paymentPending > 0 && (
-              <Link href="/admin/payments" style={{ textDecoration: 'none' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 999, background: '#FFFBEB', border: '1px solid #FDE68A', color: '#92400E', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
-                  <span style={{ fontSize: 14 }}>💳</span>
-                  <span>{paymentPending} {lang === 'fr' ? 'paiement(s) à confirmer' : 'payment(s) to confirm'}</span>
-                </div>
-              </Link>
-            )}
+              )}
+            </div>
+
+            <span style={{ color: '#E2E8F0', fontSize: 18 }}>|</span>
             <span style={{ fontSize: 11, padding: '5px 12px', borderRadius: 999, background: 'rgba(27,58,107,0.07)', color: '#1B3A6B', fontWeight: 600 }}>
               {T[lang].common.session}
             </span>

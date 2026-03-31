@@ -150,10 +150,21 @@ export default function InvestorDetailPage() {
     const d = await r.json();
     if (!r.ok) { toast.error(d.error ?? 'Erreur'); return; }
     toast.success(
-      status === 'approved' ? (lang==='fr' ? '✅ KYC approuvé' : '✅ KYC approved')
-      : status === 'rejected' ? (lang==='fr' ? '❌ KYC rejeté' : '❌ KYC rejected')
+      status === 'approved' ? (lang==='fr' ? '✅ KYC approuvé — email envoyé' : '✅ KYC approved — email sent')
+      : status === 'rejected' ? (lang==='fr' ? '❌ KYC rejeté — email envoyé' : '❌ KYC rejected — email sent')
       : (lang==='fr' ? 'Statut KYC mis à jour' : 'KYC status updated')
     );
+    // Send email notification (non-blocking)
+    if (status === 'approved' || status === 'rejected') {
+      fetch('/api/admin/email', {
+        method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include',
+        body: JSON.stringify({
+          type: status === 'approved' ? 'kyc_approved' : 'kyc_rejected',
+          investor_id: id,
+          variables: { name: data?.investor?.full_name ?? '', reason: reason ?? '', lang },
+        }),
+      }).catch(() => {});
+    }
     setShowRejectBox(false);
     setRejectionReason('');
     load();
