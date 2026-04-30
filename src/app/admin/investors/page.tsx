@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { getLang, T, type Lang } from '@/lib/i18n';
 
@@ -17,6 +17,7 @@ const EMPTY_FORM = {
 
 export default function InvestorsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [lang, setL] = useState<Lang>('fr');
   useEffect(() => {
     setL(getLang());
@@ -31,6 +32,18 @@ export default function InvestorsPage() {
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState<any>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+
+  // Filtre KYC piloté par l'URL (?kyc_status=in_review|pending|approved|rejected)
+  // Multi-valeurs séparées par virgule (ex: pending,in_review)
+  const kycFilterParam = searchParams.get('kyc_status') ?? '';
+  const kycFilters = kycFilterParam ? kycFilterParam.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+  const clearKycFilter = () => {
+    const sp = new URLSearchParams(window.location.search);
+    sp.delete('kyc_status');
+    const qs = sp.toString();
+    router.replace(`/admin/investors${qs ? '?' + qs : ''}`);
+  };
 
   const load = async () => {
     setLoading(true);
@@ -71,6 +84,7 @@ export default function InvestorsPage() {
   };
 
   const filtered = investors.filter(inv => {
+    if (kycFilters.length > 0 && !kycFilters.includes(inv.kyc_status ?? 'pending')) return false;
     if (!search) return true;
     const q = search.toLowerCase();
     return inv.full_name?.toLowerCase().includes(q) || inv.email?.toLowerCase().includes(q) || inv.country?.toLowerCase().includes(q);
@@ -115,6 +129,24 @@ export default function InvestorsPage() {
           </div>
         ))}
       </div>
+
+      {/* Bandeau filtre KYC actif */}
+      {kycFilters.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10, marginBottom: 16 }}>
+          <span style={{ fontSize: 18 }}>🔍</span>
+          <div style={{ flex: 1, fontSize: 13, color: '#991B1B', fontWeight: 600 }}>
+            {lang === 'fr' ? 'Filtre actif :' : 'Active filter:'}{' '}
+            <strong>KYC = {kycFilters.join(', ')}</strong>{' '}
+            <span style={{ color: '#7F1D1D', fontWeight: 400 }}>
+              ({filtered.length} {lang === 'fr' ? 'résultat(s)' : 'result(s)'})
+            </span>
+          </div>
+          <button onClick={clearKycFilter}
+            style={{ padding: '5px 12px', borderRadius: 8, background: '#fff', border: '1px solid #FECACA', color: '#991B1B', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>
+            ✕ {lang === 'fr' ? 'Effacer le filtre' : 'Clear filter'}
+          </button>
+        </div>
+      )}
 
       {/* Search */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid #E2E8F0', borderRadius: 10, padding: '9px 14px', marginBottom: 20, maxWidth: 400 }}>

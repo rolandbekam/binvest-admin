@@ -3,6 +3,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient, getAdminFromHeaders, auditLog } from '@/lib/supabase';
 
+// Résout investor_id (PK) à partir d'un id qui peut être soit l'investor_id, soit un user_id (auth UUID).
+// Renvoie null si introuvable.
+async function resolveInvestorId(supabase: any, id: string): Promise<string | null> {
+  const { data: byPk } = await supabase
+    .from('investors').select('id').eq('id', id).maybeSingle();
+  if (byPk?.id) return byPk.id;
+  const { data: byUid } = await supabase
+    .from('investors').select('id').eq('user_id', id).maybeSingle();
+  return byUid?.id ?? null;
+}
+
 // Try to generate a signed URL from Supabase Storage.
 // Returns null gracefully if the file doesn't exist.
 async function signedUrl(supabase: any, bucket: string, path: string): Promise<string | null> {
@@ -23,15 +34,29 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   try {
     const supabase = createAdminClient();
 
-    const { data: investor, error: invErr } = await supabase
+    // Tente d'abord par investor_id (PK), puis par user_id (auth UUID) en fallback
+    // Cas réel : les notifications "KYC submitted" peuvent porter user_id et pas investor_id
+    let { data: investor } = await supabase
       .from('investors')
       .select('*')
       .eq('id', id)
-      .single();
+      .maybeSingle();
 
-    if (invErr || !investor) {
+    if (!investor) {
+      const { data: byUserId } = await supabase
+        .from('investors')
+        .select('*')
+        .eq('user_id', id)
+        .maybeSingle();
+      investor = byUserId;
+    }
+
+    if (!investor) {
       return NextResponse.json({ error: 'Investisseur introuvable' }, { status: 404 });
     }
+
+    // À partir d'ici on travaille toujours avec l'investor_id (PK)
+    const investorId = investor.id;
 
     // Subscriptions with project info and tranches
     const { data: subscriptions } = await supabase
@@ -45,7 +70,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           payment_method, bank_reference, notes
         )
       `)
-      .eq('investor_id', id)
+      .eq('investor_id', investorId)
       .order('created_at', { ascending: false });
 
     const tranches = (subscriptions ?? []).flatMap(sub =>
@@ -73,7 +98,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // Convention 2: files stored in Supabase Storage bucket "kyc-documents"
     // Path pattern used by Buam Finance app: kyc/{user_id}/{filename}
     // We try both investor.id (admin panel UUID) and investor.user_id (auth UUID)
-    const storageIds = [id, investor.user_id].filter(Boolean);
+    const storageIds = [investorId, investor.user_id].filter(Boolean);
     for (const sid of storageIds) {
       if (!kyc_docs.id_front) {
         kyc_docs.id_front = await signedUrl(supabase, 'kyc-documents', `${sid}/id_front.jpg`)
@@ -111,11 +136,15 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const body = await request.json();
     const supabase = createAdminClient();
 
-    const { data: old } = await supabase.from('investors').select('*').eq('id', id).single();
+    const investorId = await resolveInvestorId(supabase, id);
+    if (!investorId) return NextResponse.json({ error: 'Investisseur introuvable' }, { status: 404 });
+
+    const { data: old } = await supabase.from('investors').select('*').eq('id', investorId).single();
 
     const allowed = [
       'full_name', 'email', 'phone', 'country', 'nationality', 'address',
-      'id_type', 'id_number', 'kyc_status', 'kyc_notes', 'kyc_rejection_reason',
+      'id_type', 'id_number', 'niu',
+      'kyc_status', 'kyc_notes', 'kyc_rejection_reason',
       'pic_member', 'pic_fee_paid', 'dia_signed', 'dia_signed_date',
       'risk_profile', 'notes', 'is_active',
       'subscription_start_date', 'subscription_end_date', 'subscription_status',
@@ -135,7 +164,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const { data, error } = await supabase
       .from('investors')
       .update(update)
-      .eq('id', id)
+      .eq('id', investorId)
       .select()
       .single();
 
@@ -153,7 +182,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       // Match by investor_id or by user_id
       await Promise.allSettled([
         supabase.from('kyc_submissions').update(kycSubUpdate)
-          .eq('investor_id', id).in('status', ['submitted', 'pending', 'in_review']),
+          .eq('investor_id', investorId).in('status', ['submitted', 'pending', 'in_review']),
         ...(data?.user_id ? [
           supabase.from('kyc_submissions').update(kycSubUpdate)
             .eq('user_id', data.user_id).in('status', ['submitted', 'pending', 'in_review']),
@@ -175,7 +204,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       action: update.is_active === false ? 'investor.archive'
         : update.kyc_status ? `investor.kyc.${update.kyc_status}`
         : 'investor.update',
-      resourceType: 'investor', resourceId: id,
+      resourceType: 'investor', resourceId: investorId,
       oldValues: old ?? undefined, newValues: update,
       ipAddress: admin.ip, severity,
     });
@@ -197,13 +226,16 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
 
   try {
     const supabase = createAdminClient();
-    const { data: old } = await supabase.from('investors').select('full_name, email').eq('id', id).single();
-    const { error } = await supabase.from('investors').delete().eq('id', id);
+    const investorId = await resolveInvestorId(supabase, id);
+    if (!investorId) return NextResponse.json({ error: 'Investisseur introuvable' }, { status: 404 });
+
+    const { data: old } = await supabase.from('investors').select('full_name, email').eq('id', investorId).single();
+    const { error } = await supabase.from('investors').delete().eq('id', investorId);
     if (error) throw error;
 
     await auditLog({
       adminId: admin.id, adminEmail: admin.email,
-      action: 'investor.delete', resourceType: 'investor', resourceId: id,
+      action: 'investor.delete', resourceType: 'investor', resourceId: investorId,
       oldValues: old ?? undefined,
       ipAddress: admin.ip, severity: 'critical',
     });

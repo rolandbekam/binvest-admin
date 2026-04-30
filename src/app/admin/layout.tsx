@@ -443,7 +443,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 {lang === 'fr' ? '— Souscriptions bloquées jusqu\'à validation' : '— Subscriptions blocked until validated'}
               </span>
             </div>
-            <Link href="/admin/investors?kyc_status=in_review" style={{ padding: '6px 14px', borderRadius: 8, background: '#fff', color: '#991B1B', fontSize: 12, fontWeight: 700, textDecoration: 'none', flexShrink: 0 }}>
+            <Link href="/admin/investors?kyc_status=pending,in_review" style={{ padding: '6px 14px', borderRadius: 8, background: '#fff', color: '#991B1B', fontSize: 12, fontWeight: 700, textDecoration: 'none', flexShrink: 0 }}>
               {lang === 'fr' ? 'Valider maintenant →' : 'Validate now →'}
             </Link>
             <button onClick={() => setKycDismissed(true)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', fontSize: 14, padding: '4px 8px', flexShrink: 0, lineHeight: 1 }}>✕</button>

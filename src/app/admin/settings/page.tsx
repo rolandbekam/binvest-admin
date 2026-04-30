@@ -3,6 +3,10 @@
 import { useEffect, useState } from 'react';
 import { getLang, setLang, T, type Lang } from '@/lib/i18n';
 import toast from 'react-hot-toast';
+
+const COMPANY_KEY = 'binvest_admin_company';
+const FEES_KEY = 'binvest_admin_fees';
+
 export default function SettingsPage() {
   const [lang,setLangState]=useState<Lang>('fr');
   useEffect(()=>{ setLangState(getLang()); const h=()=>setLangState(getLang()); window.addEventListener('lang-change',h); return()=>window.removeEventListener('lang-change',h); },[]);
@@ -10,6 +14,52 @@ export default function SettingsPage() {
 
   const [company,setCompany]=useState({name:'B INVEST LIMITED',ceo:'Raissa Bekamba',email:'contact@binvest.ng',country:'Nigeria'});
   const [fees,setFees]=useState({facilitation:'10',management:'3',resale:'15',exit:'30',pic:'50000'});
+
+  // Charge les valeurs depuis localStorage au montage (persistance basique)
+  useEffect(() => {
+    try {
+      const c = localStorage.getItem(COMPANY_KEY); if (c) setCompany(JSON.parse(c));
+      const f = localStorage.getItem(FEES_KEY); if (f) setFees(JSON.parse(f));
+    } catch {}
+  }, []);
+
+  const saveCompany = () => {
+    try { localStorage.setItem(COMPANY_KEY, JSON.stringify(company)); } catch {}
+    toast.success(t.saved);
+  };
+  const saveFees = () => {
+    try { localStorage.setItem(FEES_KEY, JSON.stringify(fees)); } catch {}
+    toast.success(t.saved);
+  };
+
+  // Export audit trail réel (CSV depuis l'API existante)
+  const exportAudit = async () => {
+    const id = toast.loading(lang === 'fr' ? 'Export en cours...' : 'Exporting...');
+    try {
+      const r = await fetch('/api/admin/audit?limit=1000', { credentials: 'include' });
+      const d = await r.json();
+      const rows = d.audit_logs ?? d.logs ?? [];
+      const headers = ['id','admin_email','action','resource_type','resource_id','severity','ip_address','created_at'];
+      const csv = [
+        headers.join(','),
+        ...rows.map((row: any) =>
+          headers.map(h => {
+            const v = row[h] ?? '';
+            const s = typeof v === 'object' ? JSON.stringify(v) : String(v);
+            return /[",\n]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s;
+          }).join(','),
+        ),
+      ].join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `audit-trail-${new Date().toISOString().slice(0,10)}.csv`;
+      a.click(); URL.revokeObjectURL(url);
+      toast.success(lang === 'fr' ? 'Export terminé' : 'Export complete', { id });
+    } catch (e: any) {
+      toast.error(e.message ?? 'Erreur', { id });
+    }
+  };
 
   const changeLang=(l:Lang)=>{ setLang(l); setLangState(l); toast.success(l==='fr'?'Langue : Français 🇫🇷':'Language: English 🇬🇧'); };
 
@@ -27,7 +77,7 @@ export default function SettingsPage() {
               <input value={company[k]} onChange={e=>setCompany({...company,[k]:e.target.value})} style={{width:'100%',padding:'9px 12px',borderRadius:8,border:'1px solid #E2E8F0',fontSize:14,outline:'none',fontFamily:'Outfit,sans-serif'}}/>
             </div>
           ))}
-          <button onClick={()=>toast.success(t.saved)} style={{padding:'10px 20px',borderRadius:10,border:'none',background:'#1B3A6B',color:'#fff',cursor:'pointer',fontWeight:700,fontSize:14}}>{T[lang].common.save}</button>
+          <button onClick={saveCompany} style={{padding:'10px 20px',borderRadius:10,border:'none',background:'#1B3A6B',color:'#fff',cursor:'pointer',fontWeight:700,fontSize:14}}>{T[lang].common.save}</button>
         </div>
 
         {/* Frais */}
@@ -39,7 +89,7 @@ export default function SettingsPage() {
               <input type="number" value={fees[k]} onChange={e=>setFees({...fees,[k]:e.target.value})} style={{width:'100%',padding:'9px 12px',borderRadius:8,border:'1px solid #E2E8F0',fontSize:14,outline:'none',fontFamily:'Outfit,sans-serif'}}/>
             </div>
           ))}
-          <button onClick={()=>toast.success(t.saved)} style={{padding:'10px 20px',borderRadius:10,border:'none',background:'#1B3A6B',color:'#fff',cursor:'pointer',fontWeight:700,fontSize:14}}>{T[lang].common.save}</button>
+          <button onClick={saveFees} style={{padding:'10px 20px',borderRadius:10,border:'none',background:'#1B3A6B',color:'#fff',cursor:'pointer',fontWeight:700,fontSize:14}}>{T[lang].common.save}</button>
         </div>
 
         {/* Langue */}
@@ -64,7 +114,7 @@ export default function SettingsPage() {
           <div style={{display:'flex',flexDirection:'column',gap:12}}>
             <button onClick={()=>toast.success('Fonctionnalité bientôt disponible')} style={{padding:'12px 16px',borderRadius:10,border:'1px solid #E2E8F0',background:'#F8FAFC',cursor:'pointer',fontWeight:600,fontSize:14,textAlign:'left',color:'#374151'}}>🔑 {t.change_pwd}</button>
             <button onClick={()=>toast.success('Fonctionnalité bientôt disponible')} style={{padding:'12px 16px',borderRadius:10,border:'1px solid #E2E8F0',background:'#F8FAFC',cursor:'pointer',fontWeight:600,fontSize:14,textAlign:'left',color:'#374151'}}>📱 2FA Authentication</button>
-            <button onClick={()=>toast.success('Export en cours...')} style={{padding:'12px 16px',borderRadius:10,border:'1px solid #E2E8F0',background:'#F8FAFC',cursor:'pointer',fontWeight:600,fontSize:14,textAlign:'left',color:'#374151'}}>📥 Exporter l'audit trail complet</button>
+            <button onClick={exportAudit} style={{padding:'12px 16px',borderRadius:10,border:'1px solid #E2E8F0',background:'#F8FAFC',cursor:'pointer',fontWeight:600,fontSize:14,textAlign:'left',color:'#374151'}}>📥 {lang === 'fr' ? 'Exporter l\'audit trail (CSV)' : 'Export audit trail (CSV)'}</button>
           </div>
         </div>
       </div>

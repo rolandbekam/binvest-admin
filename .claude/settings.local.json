@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git remote:*)",
+      "Bash(git add:*)",
+      "Bash(npx tsc:*)",
+      "Bash(gh auth:*)",
+      "Bash(grep -r from.*hooks /c/Users/HP/Desktop/buam-finance/app/ 2)",
+      "Bash(/dev/null grep:*)",
+      "Bash(npx expo:*)",
+      "Bash(node:*)",
+      "Bash(supabase-schema.sql:*)",
+      "Bash(find C:/Users/HP/Desktop/buam-finance/src -name *.ts -o -name *.tsx)"
+    ]
+  }
+}

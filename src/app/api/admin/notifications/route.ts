@@ -92,16 +92,26 @@ export async function POST(request: NextRequest) {
 
     const supabase = createAdminClient();
 
-    // Fetch investor
-    const { data: investor, error: fetchErr } = await supabase
+    // Fetch investor — résout par investor_id (PK) puis user_id (auth UUID) en fallback
+    let { data: investor } = await supabase
       .from('investors')
       .select('id, full_name, email, kyc_status, user_id')
       .eq('id', investor_id)
-      .single();
+      .maybeSingle();
 
-    if (fetchErr || !investor) {
+    if (!investor) {
+      const { data: byUid } = await supabase
+        .from('investors')
+        .select('id, full_name, email, kyc_status, user_id')
+        .eq('user_id', investor_id)
+        .maybeSingle();
+      investor = byUid;
+    }
+
+    if (!investor) {
       return NextResponse.json({ error: 'Investisseur introuvable' }, { status: 404 });
     }
+    const realInvestorId = investor.id;
 
     const newStatus = action === 'approve' ? 'approved' : 'rejected';
 
@@ -116,7 +126,7 @@ export async function POST(request: NextRequest) {
     const { error: invErr } = await supabase
       .from('investors')
       .update(investorUpdate)
-      .eq('id', investor_id);
+      .eq('id', realInvestorId);
     if (invErr) throw invErr;
 
     // 2. Update kyc_submissions table (if exists)
@@ -131,7 +141,7 @@ export async function POST(request: NextRequest) {
     await supabase
       .from('kyc_submissions')
       .update(kycSubUpdate)
-      .eq('investor_id', investor_id)
+      .eq('investor_id', realInvestorId)
       .in('status', ['submitted', 'pending', 'in_review'])
       .then(() => {});  // best-effort, ignore if table doesn't exist
 
@@ -185,13 +195,13 @@ export async function POST(request: NextRequest) {
     await auditLog({
       adminId: admin.id, adminEmail: admin.email,
       action: `investor.kyc.${action}`,
-      resourceType: 'investor', resourceId: investor_id,
+      resourceType: 'investor', resourceId: realInvestorId,
       oldValues: { kyc_status: investor.kyc_status },
       newValues: { kyc_status: newStatus, rejection_reason: rejection_reason ?? null },
       ipAddress: admin.ip, severity: 'warning',
     });
 
-    return NextResponse.json({ success: true, action, investor_id, kyc_status: newStatus });
+    return NextResponse.json({ success: true, action, investor_id: realInvestorId, kyc_status: newStatus });
   } catch (err: any) {
     console.error('[NOTIFICATIONS POST]', err);
     return NextResponse.json({ error: err.message ?? 'Erreur serveur' }, { status: 500 });

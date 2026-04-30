@@ -436,6 +436,7 @@ export default function InvestorDetailPage() {
               [lang==='fr'?'Profil risque':'Risk profile', inv.risk_profile==='conservative'?(lang==='fr'?'Conservateur':'Conservative'):inv.risk_profile==='aggressive'?(lang==='fr'?'Agressif':'Aggressive'):(lang==='fr'?'Modéré':'Moderate')],
               [lang==='fr'?'Type pièce ID':'ID type', inv.id_type||'—'],
               [lang==='fr'?'Numéro ID':'ID number', inv.id_number||'—'],
+              ['NIU', inv.niu||'—'],
               [lang==='fr'?'Inscrit le':'Registered', new Date(inv.created_at).toLocaleDateString(lang==='fr'?'fr-FR':'en-GB')],
               [lang==='fr'?'Statut compte':'Account status', isArchived?(lang==='fr'?'📦 Archivé':'📦 Archived'):(lang==='fr'?'✅ Actif':'✅ Active')],
               [lang==='fr'?'Compte app lié':'App account linked', inv.user_id?(lang==='fr'?`✅ Lié (${inv.user_id.slice(0,8)}…)`:`✅ Linked (${inv.user_id.slice(0,8)}…)`):(lang==='fr'?'⚠️ Non lié — KYC non accessible depuis l\'app':'⚠️ Not linked — KYC not readable from app')],
@@ -581,6 +582,7 @@ export default function InvestorDetailPage() {
                 [lang==='fr'?'Nationalité':'Nationality', inv.nationality||'—'],
                 [lang==='fr'?'Type pièce ID':'ID type', inv.id_type||'—'],
                 [lang==='fr'?'Numéro ID':'ID number', inv.id_number||'—'],
+                ['NIU', inv.niu||'—'],
                 [lang==='fr'?'Pays':'Country', inv.country||'—'],
                 ['Email', inv.email],
               ].map(([l,v]) => (
