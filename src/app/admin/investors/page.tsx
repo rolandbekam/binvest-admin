@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { getLang, T, type Lang } from '@/lib/i18n';
@@ -15,7 +15,7 @@ const EMPTY_FORM = {
   kyc_status: 'pending', pic_member: false, dia_signed: false,
 };
 
-export default function InvestorsPage() {
+function InvestorsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [lang, setL] = useState<Lang>('fr');
@@ -280,5 +280,13 @@ export default function InvestorsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function InvestorsPage() {
+  return (
+    <Suspense fallback={<div style={{ padding: 20, textAlign: 'center', color: '#64748B' }}>Chargement...</div>}>
+      <InvestorsPageContent />
+    </Suspense>
   );
 }
