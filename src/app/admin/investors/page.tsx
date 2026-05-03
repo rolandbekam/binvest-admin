@@ -33,6 +33,68 @@ function InvestorsPageContent() {
   const [form, setForm] = useState<any>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
 
+  // ── Bulk KYC sélection ───────────────────────────────────────────────────
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkAction, setBulkAction] = useState<'approve' | 'reject' | null>(null);
+  const [bulkReason, setBulkReason] = useState('');
+  const [bulkProcessing, setBulkProcessing] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState({ done: 0, total: 0 });
+
+  const toggleSelected = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAllVisible = (visible: any[]) => {
+    setSelectedIds(prev => {
+      const allSelected = visible.every(inv => prev.has(inv.id));
+      return allSelected ? new Set() : new Set(visible.map(inv => inv.id));
+    });
+  };
+
+  const runBulkKyc = async () => {
+    if (!bulkAction || selectedIds.size === 0) return;
+    if (bulkAction === 'reject' && !bulkReason.trim()) {
+      toast.error(lang === 'fr' ? 'Raison du refus requise' : 'Rejection reason required');
+      return;
+    }
+    setBulkProcessing(true);
+    const ids = Array.from(selectedIds);
+    setBulkProgress({ done: 0, total: ids.length });
+    let success = 0, fail = 0;
+    for (const id of ids) {
+      try {
+        const r = await fetch('/api/admin/notifications', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            investor_id: id,
+            action: bulkAction,
+            rejection_reason: bulkAction === 'reject' ? bulkReason.trim() : undefined,
+            send_email: true,
+          }),
+        });
+        r.ok ? success++ : fail++;
+      } catch { fail++; }
+      setBulkProgress(p => ({ ...p, done: p.done + 1 }));
+    }
+    setBulkProcessing(false);
+    setBulkAction(null);
+    setBulkReason('');
+    setSelectedIds(new Set());
+    setBulkProgress({ done: 0, total: 0 });
+    if (fail === 0) {
+      toast.success(lang === 'fr' ? `✅ ${success} dossier(s) traité(s)` : `✅ ${success} processed`);
+    } else {
+      toast.error(lang === 'fr' ? `${success} OK · ${fail} échec(s)` : `${success} OK · ${fail} failed`);
+    }
+    load();
+  };
+
   // Filtre KYC piloté par l'URL (?kyc_status=in_review|pending|approved|rejected)
   // Multi-valeurs séparées par virgule (ex: pending,in_review)
   const kycFilterParam = searchParams.get('kyc_status') ?? '';
@@ -164,6 +226,15 @@ function InvestorsPageContent() {
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ background: '#F8FAFC' }}>
+              <th style={{ width: 36, padding: '11px 0 11px 16px', borderBottom: '1px solid #E2E8F0' }}>
+                <input
+                  type="checkbox"
+                  checked={filtered.length > 0 && filtered.every(inv => selectedIds.has(inv.id))}
+                  onChange={() => toggleSelectAllVisible(filtered)}
+                  style={{ cursor: 'pointer', width: 16, height: 16 }}
+                  title={lang === 'fr' ? 'Tout sélectionner' : 'Select all'}
+                />
+              </th>
               {[ti.name, ti.country, ti.capital, ti.projects, ti.pic, ti.kyc, ti.actions].map(h => (
                 <th key={h} style={{ textAlign: 'left', padding: '11px 16px', fontSize: 11, color: '#94A3B8', textTransform: 'uppercase', fontWeight: 700, borderBottom: '1px solid #E2E8F0' }}>{h}</th>
               ))}
@@ -173,15 +244,24 @@ function InvestorsPageContent() {
             {loading ? (
               <tr><td colSpan={7} style={{ textAlign: 'center', padding: 48, color: '#94A3B8' }}>{t.common.loading}</td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={7} style={{ textAlign: 'center', padding: 48, color: '#94A3B8' }}>{ti.no_investors}</td></tr>
+              <tr><td colSpan={8} style={{ textAlign: 'center', padding: 48, color: '#94A3B8' }}>{ti.no_investors}</td></tr>
             ) : filtered.map((inv, i) => {
               const totalInvested = (inv.subscriptions ?? []).reduce((s: number, sub: any) => s + (sub.amount_ngn ?? 0), 0);
               const projectCount = (inv.subscriptions ?? []).length;
               const initials = inv.full_name?.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase() ?? '??';
               return (
-                <tr key={inv.id} style={{ borderBottom: i < filtered.length - 1 ? '1px solid #F1F5F9' : 'none' }}
-                  onMouseEnter={e => { e.currentTarget.style.background = '#F8FAFC'; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = ''; }}>
+                <tr key={inv.id} style={{ borderBottom: i < filtered.length - 1 ? '1px solid #F1F5F9' : 'none', background: selectedIds.has(inv.id) ? '#FFFBEC' : undefined }}
+                  onMouseEnter={e => { if (!selectedIds.has(inv.id)) e.currentTarget.style.background = '#F8FAFC'; }}
+                  onMouseLeave={e => { if (!selectedIds.has(inv.id)) e.currentTarget.style.background = ''; }}>
+                  <td style={{ padding: '13px 0 13px 16px' }}>
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(inv.id)}
+                      onChange={() => toggleSelected(inv.id)}
+                      style={{ cursor: 'pointer', width: 16, height: 16 }}
+                      onClick={e => e.stopPropagation()}
+                    />
+                  </td>
                   <td style={{ padding: '13px 16px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#1B3A6B', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{initials}</div>
@@ -274,6 +354,102 @@ function InvestorsPageContent() {
               <button onClick={save} disabled={saving}
                 style={{ padding: '10px 24px', borderRadius: 10, border: 'none', background: saving ? '#94A3B8' : '#1B3A6B', color: '#fff', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 700 }}>
                 {saving ? t.common.loading : `✅ ${lang === 'fr' ? 'Ajouter l\'investisseur' : 'Add Investor'}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Barre flottante actions bulk ── */}
+      {selectedIds.size > 0 && !bulkAction && (
+        <div style={{
+          position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
+          background: '#0F1E35', color: '#fff', borderRadius: 14, padding: '12px 20px',
+          display: 'flex', alignItems: 'center', gap: 16, zIndex: 1000,
+          boxShadow: '0 12px 40px rgba(15,30,53,0.35)',
+          fontFamily: 'Outfit,sans-serif',
+        }}>
+          <span style={{ fontWeight: 700, fontSize: 14 }}>
+            {selectedIds.size} {lang === 'fr' ? 'sélectionné(s)' : 'selected'}
+          </span>
+          <button
+            onClick={() => setBulkAction('approve')}
+            style={{ padding: '8px 16px', borderRadius: 10, border: 'none', background: '#16a34a', color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 13 }}>
+            ✅ {lang === 'fr' ? 'Approuver' : 'Approve'}
+          </button>
+          <button
+            onClick={() => setBulkAction('reject')}
+            style={{ padding: '8px 16px', borderRadius: 10, border: 'none', background: '#E63946', color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 13 }}>
+            ❌ {lang === 'fr' ? 'Refuser' : 'Reject'}
+          </button>
+          <button
+            onClick={() => setSelectedIds(new Set())}
+            style={{ padding: '8px 12px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.2)', background: 'transparent', color: '#fff', cursor: 'pointer', fontSize: 13 }}>
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* ── Modal de confirmation bulk ── */}
+      {bulkAction && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: 20, fontFamily: 'Outfit,sans-serif' }}
+          onClick={e => { if (e.target === e.currentTarget && !bulkProcessing) setBulkAction(null); }}>
+          <div style={{ background: '#fff', borderRadius: 18, padding: 28, width: 480, maxWidth: '100%', boxShadow: '0 24px 80px rgba(0,0,0,0.25)' }}>
+            <h3 style={{ fontFamily: 'Syne,sans-serif', fontSize: 20, fontWeight: 800, color: '#0F1E35', margin: '0 0 8px' }}>
+              {bulkAction === 'approve' ? '✅' : '❌'} {lang === 'fr' ? 'Action en lot' : 'Bulk action'}
+            </h3>
+            <p style={{ color: '#5A6E8A', fontSize: 14, margin: '0 0 20px' }}>
+              {bulkAction === 'approve'
+                ? (lang === 'fr' ? `Approuver le KYC de ${selectedIds.size} investisseur(s) ?` : `Approve KYC for ${selectedIds.size} investor(s)?`)
+                : (lang === 'fr' ? `Refuser le KYC de ${selectedIds.size} investisseur(s) ?` : `Reject KYC for ${selectedIds.size} investor(s)?`)}
+            </p>
+            {bulkAction === 'reject' && (
+              <div style={{ marginBottom: 20 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>
+                  {lang === 'fr' ? 'Raison du refus (commune à tous)' : 'Rejection reason (applies to all)'} *
+                </label>
+                <textarea
+                  value={bulkReason}
+                  onChange={e => setBulkReason(e.target.value)}
+                  placeholder={lang === 'fr' ? 'Ex: Documents illisibles, à resoumettre.' : 'Ex: Documents unreadable, please resubmit.'}
+                  disabled={bulkProcessing}
+                  style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid #E2E8F0', fontSize: 14, fontFamily: 'Outfit,sans-serif', minHeight: 80, resize: 'vertical', outline: 'none' }}
+                />
+              </div>
+            )}
+            {bulkProcessing && (
+              <div style={{ background: '#F1F5F9', borderRadius: 10, padding: 12, marginBottom: 20 }}>
+                <div style={{ fontSize: 13, color: '#5A6E8A', marginBottom: 6, fontWeight: 600 }}>
+                  {lang === 'fr' ? 'Traitement en cours...' : 'Processing...'} ({bulkProgress.done}/{bulkProgress.total})
+                </div>
+                <div style={{ height: 6, background: '#E2E8F0', borderRadius: 3, overflow: 'hidden' }}>
+                  <div style={{
+                    height: '100%',
+                    width: `${bulkProgress.total ? (bulkProgress.done / bulkProgress.total) * 100 : 0}%`,
+                    background: bulkAction === 'approve' ? '#16a34a' : '#E63946',
+                    transition: 'width 0.3s',
+                  }} />
+                </div>
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button onClick={() => { if (!bulkProcessing) { setBulkAction(null); setBulkReason(''); } }}
+                disabled={bulkProcessing}
+                style={{ padding: '10px 20px', borderRadius: 10, border: '1px solid #E2E8F0', background: '#fff', color: '#5A6E8A', cursor: bulkProcessing ? 'not-allowed' : 'pointer', fontWeight: 600, fontSize: 14 }}>
+                {t.common.cancel}
+              </button>
+              <button onClick={runBulkKyc}
+                disabled={bulkProcessing || (bulkAction === 'reject' && !bulkReason.trim())}
+                style={{
+                  padding: '10px 24px', borderRadius: 10, border: 'none',
+                  background: bulkProcessing ? '#94A3B8' : (bulkAction === 'approve' ? '#16a34a' : '#E63946'),
+                  color: '#fff', cursor: bulkProcessing ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: 14,
+                }}>
+                {bulkProcessing
+                  ? (lang === 'fr' ? 'En cours...' : 'Processing...')
+                  : (bulkAction === 'approve'
+                      ? `✅ ${lang === 'fr' ? 'Confirmer l\'approbation' : 'Confirm approval'}`
+                      : `❌ ${lang === 'fr' ? 'Confirmer le refus' : 'Confirm rejection'}`)}
               </button>
             </div>
           </div>
