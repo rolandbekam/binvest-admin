@@ -20,6 +20,12 @@ const TR_L: Record<string,{fr:string;en:string}> = {
   late:{fr:'En retard',en:'Late'}, waived:{fr:'Annulé',en:'Waived'},
 };
 
+// Détection PDF par extension OU par content-type dans signed URL
+function isPdfUrl(url: string): boolean {
+  const u = url.toLowerCase();
+  return u.includes('.pdf') || u.includes('application/pdf') || u.includes('content-type=pdf');
+}
+
 function DocImage({ url, label, lang }: { url: string | null; label: string; lang: string }) {
   const [zoom, setZoom] = useState(false);
   const [err, setErr] = useState(false);
@@ -36,6 +42,54 @@ function DocImage({ url, label, lang }: { url: string | null; label: string; lan
     );
   }
 
+  const isPdf = isPdfUrl(url);
+
+  // ── Aperçu PDF inline avec <iframe> + boutons d'action ──
+  if (isPdf) {
+    return (
+      <>
+        <div style={{ position:'relative', borderRadius:12, overflow:'hidden', border:'1px solid #E2E8F0', boxShadow:'0 2px 8px rgba(0,0,0,0.08)', background:'#F8FAFC' }}>
+          <iframe
+            src={url + '#toolbar=0&navpanes=0'}
+            title={label}
+            style={{ width:'100%', height:180, border:'none', display:'block', background:'#fff' }}
+            onError={() => setErr(true)}
+          />
+          <div style={{ position:'absolute', bottom:0, left:0, right:0, padding:'8px 12px', background:'linear-gradient(transparent,rgba(0,0,0,0.7))', color:'#fff', fontSize:12, fontWeight:700, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+            <span>📄 {label}</span>
+            <span style={{ fontSize:9, padding:'2px 6px', borderRadius:4, background:'rgba(255,255,255,0.2)' }}>PDF</span>
+          </div>
+          <button onClick={() => setZoom(true)}
+            style={{ position:'absolute', top:8, right:8, background:'rgba(0,0,0,0.6)', border:'none', borderRadius:6, padding:'4px 9px', color:'#fff', fontSize:10, fontWeight:700, cursor:'pointer' }}>
+            🔍 {lang === 'fr' ? 'Agrandir' : 'Expand'}
+          </button>
+        </div>
+        <div style={{ display:'flex', gap:6, marginTop:8 }}>
+          <a href={url} target="_blank" rel="noopener noreferrer"
+            style={{ flex:1, padding:'7px 10px', borderRadius:8, border:'1px solid #E2E8F0', background:'#fff', color:'#1B3A6B', fontSize:11, fontWeight:700, textAlign:'center', textDecoration:'none' }}>
+            ↗ {lang === 'fr' ? 'Onglet' : 'Tab'}
+          </a>
+          <a href={url} download
+            style={{ flex:1, padding:'7px 10px', borderRadius:8, border:'1px solid #E2E8F0', background:'#fff', color:'#1B3A6B', fontSize:11, fontWeight:700, textAlign:'center', textDecoration:'none' }}>
+            ⬇ {lang === 'fr' ? 'Télécharger' : 'Download'}
+          </a>
+        </div>
+
+        {zoom && (
+          <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.85)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:9999, padding:24 }}
+            onClick={e => { if (e.target === e.currentTarget) setZoom(false); }}>
+            <div style={{ position:'relative', width:'92vw', height:'92vh', background:'#fff', borderRadius:12, overflow:'hidden', boxShadow:'0 20px 60px rgba(0,0,0,0.5)' }}>
+              <iframe src={url} title={label} style={{ width:'100%', height:'100%', border:'none' }} />
+              <button onClick={() => setZoom(false)}
+                style={{ position:'absolute', top:12, right:12, width:36, height:36, borderRadius:'50%', background:'#fff', border:'1px solid #E2E8F0', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', fontSize:16, fontWeight:900, color:'#374151', boxShadow:'0 4px 12px rgba(0,0,0,0.3)' }}>✕</button>
+            </div>
+          </div>
+        )}
+      </>
+    );
+  }
+
+  // ── Aperçu image (avec zoom modal) ──
   return (
     <>
       <div style={{ position:'relative', borderRadius:12, overflow:'hidden', border:'1px solid #E2E8F0', cursor:'zoom-in', boxShadow:'0 2px 8px rgba(0,0,0,0.08)' }}
@@ -48,6 +102,16 @@ function DocImage({ url, label, lang }: { url: string | null; label: string; lan
         <div style={{ position:'absolute', top:8, right:8, background:'rgba(0,0,0,0.5)', borderRadius:6, padding:'3px 7px', color:'#fff', fontSize:10, fontWeight:700 }}>
           🔍 {lang === 'fr' ? 'Agrandir' : 'Zoom'}
         </div>
+      </div>
+      <div style={{ display:'flex', gap:6, marginTop:8 }}>
+        <a href={url} target="_blank" rel="noopener noreferrer"
+          style={{ flex:1, padding:'7px 10px', borderRadius:8, border:'1px solid #E2E8F0', background:'#fff', color:'#1B3A6B', fontSize:11, fontWeight:700, textAlign:'center', textDecoration:'none' }}>
+          ↗ {lang === 'fr' ? 'Onglet' : 'Tab'}
+        </a>
+        <a href={url} download
+          style={{ flex:1, padding:'7px 10px', borderRadius:8, border:'1px solid #E2E8F0', background:'#fff', color:'#1B3A6B', fontSize:11, fontWeight:700, textAlign:'center', textDecoration:'none' }}>
+          ⬇ {lang === 'fr' ? 'Télécharger' : 'Download'}
+        </a>
       </div>
 
       {zoom && (
