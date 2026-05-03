@@ -141,8 +141,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { href: '/admin/tontines',   icon: '🤝', label: t.tontines },
     { href: '/admin/documents',  icon: '📄', label: t.documents },
     { section: t.s_security },
-    { href: '/admin/audit',    icon: '🔍', label: t.audit },
-    { href: '/admin/settings', icon: '⚙️', label: t.settings },
+    { href: '/admin/audit',       icon: '🔍', label: t.audit },
+    { href: '/admin/admin-users', icon: '🔐', label: lang === 'fr' ? 'Administrateurs' : 'Admin Users' },
+    { href: '/admin/settings',    icon: '⚙️', label: t.settings },
   ];
 
   const logout = async () => {

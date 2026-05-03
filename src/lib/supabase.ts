@@ -78,14 +78,45 @@ export function getAdminFromHeaders(headers: Headers) {
 }
 
 // ── Vérification des permissions par rôle ────────────────────────
-export function hasPermission(
-  role: 'super_admin' | 'admin' | 'viewer',
-  action: 'read' | 'write' | 'delete' | 'admin'
-): boolean {
-  const permissions = {
+export type AdminRole = 'super_admin' | 'admin' | 'viewer';
+export type AdminAction = 'read' | 'write' | 'delete' | 'admin';
+
+export function hasPermission(role: AdminRole, action: AdminAction): boolean {
+  const permissions: Record<AdminRole, AdminAction[]> = {
     super_admin: ['read', 'write', 'delete', 'admin'],
     admin:       ['read', 'write'],
     viewer:      ['read'],
   };
   return permissions[role]?.includes(action) ?? false;
+}
+
+/**
+ * Garde route API : retourne un objet { admin, error? }.
+ * Si error présent, retourner directement `error` depuis la route.
+ *
+ * Usage :
+ *   const { admin, error } = requireAdmin(request.headers, 'write');
+ *   if (error) return error;
+ */
+export function requireAdmin(headers: Headers, action: AdminAction = 'read') {
+  const admin = getAdminFromHeaders(headers);
+  if (!admin.id) {
+    return {
+      admin: null,
+      error: new Response(JSON.stringify({ error: 'Non authentifié' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    };
+  }
+  if (!hasPermission(admin.role, action)) {
+    return {
+      admin,
+      error: new Response(
+        JSON.stringify({ error: `Permission "${action}" refusée pour le rôle "${admin.role}"` }),
+        { status: 403, headers: { 'Content-Type': 'application/json' } },
+      ),
+    };
+  }
+  return { admin, error: null };
 }

@@ -4,7 +4,7 @@
 // GET /api/admin/export?type=investors|payments|subscriptions
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createAdminClient, getAdminFromHeaders, auditLog } from '@/lib/supabase';
+import { createAdminClient, requireAdmin, auditLog } from '@/lib/supabase';
 
 const xmlEscape = (v: any) =>
   String(v ?? '')
@@ -52,10 +52,9 @@ function wrapWorkbook(sheets: string): string {
 }
 
 export async function GET(request: NextRequest) {
-  const admin = getAdminFromHeaders(request.headers);
-  if (!admin) {
-    return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
-  }
+  // Export = lecture autorisée à tous les rôles, mais on trace via auditLog
+  const { admin, error } = requireAdmin(request.headers, 'read');
+  if (error) return error;
 
   const type = request.nextUrl.searchParams.get('type') ?? 'investors';
   const supabase = createAdminClient();

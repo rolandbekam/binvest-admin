@@ -95,16 +95,19 @@ export async function middleware(request: NextRequest) {
       requestHeaders.set('x-client-ip', ip);
 
       // Vérification rôle pour routes super_admin
-      if (pathname.includes('/settings') || pathname.includes('/admin-users')) {
-        if (payload.role !== 'super_admin') {
-          if (pathname.startsWith('/api/')) {
-            return NextResponse.json(
-              { error: 'Accès refusé — Super Admin requis' },
-              { status: 403 }
-            );
-          }
-          return NextResponse.redirect(new URL('/admin/dashboard?error=forbidden', request.url));
+      // Couvre : /admin/settings, /admin/admin-users, /api/admin/admin-users/*
+      const requiresSuperAdmin =
+        pathname.startsWith('/admin/settings') ||
+        pathname.startsWith('/admin/admin-users') ||
+        pathname.startsWith('/api/admin/admin-users');
+      if (requiresSuperAdmin && payload.role !== 'super_admin') {
+        if (pathname.startsWith('/api/')) {
+          return NextResponse.json(
+            { error: 'Accès refusé — Super Admin requis' },
+            { status: 403 }
+          );
         }
+        return NextResponse.redirect(new URL('/admin/dashboard?error=forbidden', request.url));
       }
 
       const response = NextResponse.next({ request: { headers: requestHeaders } });
