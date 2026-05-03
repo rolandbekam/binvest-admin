@@ -173,7 +173,20 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 4. Send email notification (non-blocking)
+    // 4. Send PUSH notification (non-blocking) — silencieux si pas de token
+    if (investor.user_id) {
+      const { sendPushToUser } = await import('@/lib/pushNotifications');
+      const isApprove = action === 'approve';
+      sendPushToUser(investor.user_id, {
+        title: isApprove ? '✅ KYC validé' : '❌ KYC refusé',
+        body: isApprove
+          ? `Bienvenue ${investor.full_name?.split(' ')[0] ?? ''} ! Vous pouvez maintenant accéder à B-Invest et Tontine.`
+          : `Votre dossier a été refusé. Motif : ${rejection_reason ?? 'voir profil'}`,
+        data: { type: isApprove ? 'kyc_approved' : 'kyc_rejected', investor_id: realInvestorId },
+      }).catch(() => {});
+    }
+
+    // 5. Send email notification (non-blocking)
     if (send_email && investor.email) {
       const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
       fetch(`${appUrl}/api/admin/email`, {
