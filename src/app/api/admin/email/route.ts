@@ -216,7 +216,10 @@ async function sendEmail({ to, subject, body, html }: { to: string; subject: str
   }
 
   // Option 2: Log en développement (pas de clé email configurée)
-  console.log('[EMAIL PREVIEW]', { to, subject, body });
+  // En dev seulement — production silencieuse pour éviter info leak.
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('[EMAIL PREVIEW]', { to, subject, bodyPreview: body.slice(0, 100) + '...' });
+  }
   return { provider: 'console', success: true, preview: true };
 }
 
