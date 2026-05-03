@@ -117,6 +117,28 @@ export default function SettingsPage() {
             <button onClick={exportAudit} style={{padding:'12px 16px',borderRadius:10,border:'1px solid #E2E8F0',background:'#F8FAFC',cursor:'pointer',fontWeight:600,fontSize:14,textAlign:'left',color:'#374151'}}>📥 {lang === 'fr' ? 'Exporter l\'audit trail (CSV)' : 'Export audit trail (CSV)'}</button>
           </div>
         </div>
+
+        {/* Exports Excel */}
+        <div style={{background:'#fff',borderRadius:16,border:'1px solid #E2E8F0',padding:24}}>
+          <div style={{fontFamily:'Syne,sans-serif',fontWeight:700,marginBottom:6,fontSize:15}}>📊 {lang === 'fr' ? 'Exports Excel' : 'Excel Exports'}</div>
+          <div style={{color:'#5A6E8A',fontSize:12,marginBottom:16}}>
+            {lang === 'fr' ? 'Téléchargez les données au format Excel (.xls).' : 'Download data in Excel (.xls) format.'}
+          </div>
+          <div style={{display:'flex',flexDirection:'column',gap:12}}>
+            {([
+              ['investors', '👥', lang === 'fr' ? 'Investisseurs' : 'Investors'],
+              ['subscriptions', '🏦', lang === 'fr' ? 'Souscriptions' : 'Subscriptions'],
+              ['payments', '💳', lang === 'fr' ? 'Paiements' : 'Payments'],
+            ] as const).map(([type, icon, label]) => (
+              <a key={type}
+                 href={`/api/admin/export?type=${type}`}
+                 onClick={() => toast.success(lang === 'fr' ? 'Téléchargement...' : 'Downloading...')}
+                 style={{padding:'12px 16px',borderRadius:10,border:'1px solid #E2E8F0',background:'#F8FAFC',fontWeight:600,fontSize:14,textAlign:'left',color:'#374151',textDecoration:'none',display:'block'}}>
+                {icon} {lang === 'fr' ? `Exporter les ${label.toLowerCase()}` : `Export ${label.toLowerCase()}`} (.xls)
+              </a>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );
