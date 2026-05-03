@@ -5,13 +5,18 @@
 //   "crons": [{ "path": "/api/cron/subscription-reminders", "schedule": "0 8 * * *" }]
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase';
+import { sendEmail as sendMail } from '@/lib/email';
 
 const REMINDER_DAYS = [60, 30, 14, 7];
 const PIC_FEE_AMOUNT = 50_000;
 
+// Wrapper pour conserver la signature originelle (to, subject, body).
 async function sendEmail(to: string, subject: string, body: string) {
-  // TODO: replace with actual SMTP / Resend / SendGrid integration
-  console.log(`[CRON EMAIL] To: ${to}\nSubject: ${subject}\n${body}\n`);
+  if (!to) return;
+  const r = await sendMail({ to, subject, body });
+  if (!r.success && r.error) {
+    console.warn('[CRON EMAIL] failed:', to, r.error);
+  }
 }
 
 export async function GET(request: NextRequest) {

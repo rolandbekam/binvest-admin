@@ -196,31 +196,13 @@ Best regards,
   },
 };  // end TEMPLATES
 
-async function sendEmail({ to, subject, body, html }: { to: string; subject: string; body: string; html?: string }) {
-  // Option 1: Resend (recommandé — gratuit jusqu'à 3000/mois)
-  const RESEND_KEY = process.env.RESEND_API_KEY;
-  if (RESEND_KEY) {
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${RESEND_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        from: process.env.EMAIL_FROM ?? 'B-Invest Limited <noreply@binvest.ng>',
-        to: [to],
-        subject,
-        text: body,
-        html: html ?? body.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>'),
-      }),
-    });
-    if (!res.ok) throw new Error(`Resend error: ${await res.text()}`);
-    return { provider: 'resend', success: true };
-  }
+// Helper email centralisé dans @/lib/email pour réutilisation par /api/cron/*
+import { sendEmail as sendMailShared } from '@/lib/email';
 
-  // Option 2: Log en développement (pas de clé email configurée)
-  // En dev seulement — production silencieuse pour éviter info leak.
-  if (process.env.NODE_ENV !== 'production') {
-    console.log('[EMAIL PREVIEW]', { to, subject, bodyPreview: body.slice(0, 100) + '...' });
-  }
-  return { provider: 'console', success: true, preview: true };
+async function sendEmail({ to, subject, body, html }: { to: string; subject: string; body: string; html?: string }) {
+  const r = await sendMailShared({ to, subject, body, html });
+  if (!r.success && r.error) throw new Error(r.error);
+  return r;
 }
 
 export async function POST(request: NextRequest) {
